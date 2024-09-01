@@ -21,12 +21,12 @@ python main.py --mode <mode> --config <config_file> --device <device>
 
 ## Mode
 - `tap`: Track any number points in a video **(no more than 20 points)**, you can add points by clicking on the selected frame, and finish by just close the window, as the following demo:
-<center class='half'>
-<img src="demo/tap_in.png" width="50%"> <img src="demo/tap.gif" width="38%">
-</center>
+<div align=center>
+<img src="demo/tap_in.png" width="40%" align="center"> <img src="demo/tap.gif" width="30%" align="center">
+</div>
 
 
 - `mask`: Track any objects in a video by mask, you can add mask by drawing on the selected frame, you can click left mouse button to add positive points, and right mouse button to add negative points, and finish by just close the window, as the following demo:
-<center class='half'>
-<img src="demo/sam_in.png" width="48%"> <img src="demo/sam.gif" width="36%">
-</center>
+<div align=center>
+<img src="demo/sam_in.png" width="40%"> <img src="demo/sam.gif" width="30%">
+</div>
