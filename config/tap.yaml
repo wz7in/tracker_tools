@@ -1,0 +1,7 @@
+mode: tap
+tap_ckpt_path: /Users/wzqin/Library/CloudStorage/OneDrive-个人/BUAA/project/robot/tapnet/checkpoints/bootstapir_checkpoint_v2.npy
+video_path: /Users/wzqin/Library/CloudStorage/OneDrive-个人/BUAA/project/robot/tapnet/videos/1.mp4
+image_list_save_path: /Users/wzqin/Library/CloudStorage/OneDrive-个人/BUAA/project/robot/tapnet/1
+select_frame: 0
+save_visualization: true
+save_path: './tap.avi'

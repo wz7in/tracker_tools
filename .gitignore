@@ -1,3 +1,4 @@
 checkpoints
 segment-anything-2
 videos
+**/__pycache__/
