@@ -2,4 +2,5 @@ checkpoints
 segment-anything-2
 videos
 .vscode/
+.DS_Store
 **/__pycache__/
