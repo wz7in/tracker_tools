@@ -25,4 +25,4 @@ python main.py --mode <mode> --config <config_file> --device <device>
 
 
 - `mask`: Track any objects in a video by mask, you can add mask by drawing on the selected frame, you can click left mouse button to add positive points, and right mouse button to add negative points, and finish by just close the window, as the following demo:
-<img src="demo/sam_in.png" width="50%"> <img src="demo/sam.gif" width="38%">
+<img src="demo/sam_in.png" width="48%"> <img src="demo/sam.gif" width="36%">
