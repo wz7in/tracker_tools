@@ -7,7 +7,7 @@ from tapnet.utils import viz_utils
 def get_points(select_frame, video, mode='TAP'):
     colormap = viz_utils.get_colors(20)
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.imshow(video[select_frame])
+    ax.imshow(video[select_frame][...,::-1])
     ax.axis('off')
     if mode == 'TAP':
       ax.set_title('You can select more than 1 point by left mouse button \n and then close the window.')

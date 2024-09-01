@@ -29,7 +29,8 @@ if __name__ == "__main__":
     
     # get positave points and negative points
     positive_points, negative_points, labels = get_points(config['select_frame'], video, mode='SAM')
-    positive_points = np.concatenate([positive_points, negative_points], axis=0)
+    if len(negative_points)!=0:
+      positive_points = np.concatenate([positive_points, negative_points], axis=0)
     
     model = Sam(config['sam_ckpt_path'], config['model_config'], config['select_frame'], config['threshold'], config['save_visualization'], args.device)
     masks = model(temp_image_list_save_dir, positive_points, labels)
