@@ -1,4 +1,5 @@
 checkpoints
 segment-anything-2
 videos
+.vscode
 **/__pycache__/
