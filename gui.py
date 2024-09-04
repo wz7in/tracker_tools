@@ -1,8 +1,9 @@
 import sys
+from PyQt5.QtCore import QPoint, QTimer, Qt
 import cv2
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, 
                              QLabel, QSlider, QFileDialog, QLineEdit, QHBoxLayout, QFrame, QButtonGroup, QRadioButton, QToolTip)
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
 from PyQt5.QtCore import Qt, QRect, QEvent, QPoint
 
 
@@ -19,6 +20,7 @@ class VideoPlayer(QWidget):
         
         # Video display label
         self.video_label = QLabel(self)
+        self.video_label.setMouseTracking(True)
         self.video_label.setAlignment(Qt.AlignCenter)  # Center the QLabel
         video_layout.addWidget(self.video_label)
         
@@ -71,6 +73,47 @@ class VideoPlayer(QWidget):
         # Create a horizontal layout for the title and line
         annotation_title_layout = QHBoxLayout()
 
+        # Add a label for the per-frame annotation title
+        annotation_title = QLabel("Control Tool Box", self)
+        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+        annotation_title_layout.addWidget(annotation_title)
+
+        # Add a horizontal line to fill the remaining space
+        line = QFrame(self)
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet("color: grey;")  # Set the same color as the title
+        annotation_title_layout.addWidget(line)
+
+        # Add the horizontal layout to the toolbar layout
+        toolbar_layout.addLayout(annotation_title_layout)
+
+        # self.load_button = QPushButton("Load Video", self)
+        # self.load_button.clicked.connect(self.load_video)
+        # toolbar_layout.addWidget(self.load_button)
+        
+        # play_button
+        self.play_button = QPushButton("Auto Play", self)
+        self.play_button.setCheckable(True)
+        self.play_button.clicked.connect(self.toggle_playback)
+        toolbar_layout.addWidget(self.play_button)
+        
+        # clear_all_button
+        self.clear_all_button = QPushButton("Clear Annotations", self)
+        self.clear_all_button.clicked.connect(self.clear_annotations)
+        toolbar_layout.addWidget(self.clear_all_button)
+        
+        # remove_last_button
+        self.remove_last_button = QPushButton("Remove Last Annotation", self)
+        self.remove_last_button.clicked.connect(self.remove_last_annotation)
+        toolbar_layout.addWidget(self.remove_last_button)
+        
+        # self.r_layout.addStretch(1)
+
+        # Create a horizontal layout for the title and line
+        annotation_title_layout = QHBoxLayout()
+        
         # Add a label for the per-frame annotation title
         annotation_title = QLabel("Per Video Annotation", self)
         annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
@@ -151,7 +194,29 @@ class VideoPlayer(QWidget):
 
         self.cap = None
         self.frame_count = 0
+        self.last_frame = None
+        
+        self.pos_click_position = []
+        self.neg_click_position = []
+        self.click_action = []
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.play_video)
 
+    def clear_annotations(self):
+        self.pos_click_position = []
+        self.neg_click_position = []
+        self.click_action = []
+        self.draw_point()
+    
+    def remove_last_annotation(self):
+        if len(self.click_action) > 0 and self.click_action[-1] == 1 and len(self.pos_click_position) > 0:
+            self.pos_click_position.pop()
+            self.click_action.pop()
+        elif len(self.click_action) > 0 and self.click_action[-1] == -1 and len(self.neg_click_position) > 0:
+            self.neg_click_position.pop()
+            self.click_action.pop()
+        self.draw_point()
+    
     def load_video(self):
         video_path, _ = QFileDialog.getOpenFileName(self, "Select a Video", "", "Video Files (*.mp4 *.avi *.mov)")
         if video_path:
@@ -188,9 +253,20 @@ class VideoPlayer(QWidget):
                 # Update and reposition frame position label
                 self.update_frame_position_label()
 
+                self.last_frame = frame
+
     def seek_video(self):
         frame_number = self.progress_slider.value()
         self.update_frame(frame_number)
+    
+    def toggle_playback(self):
+        if self.play_button.isChecked():
+            self.play_button.setText("Stop Auto Play")
+            self.current_frame = self.progress_slider.value()
+            self.timer.start(30)  # Set timer to update frame every 30 ms
+        else:
+            self.play_button.setText("Auto Play")
+            self.timer.stop()
 
     def update_frame_position_label(self):
         # Update the text of the label to show the current frame position
@@ -211,6 +287,53 @@ class VideoPlayer(QWidget):
     def print_frame_position(self):
         current_position = self.progress_slider.value()
         print(f"Current Frame Position: {current_position}")
+    
+    def play_video(self):
+        if self.cap is not None:
+            if self.current_frame < self.frame_count - 1:
+                self.current_frame += 1
+                self.update_frame(self.current_frame)
+            else:
+                self.timer.stop()
+                self.play_button.setChecked(False)
+                self.play_button.setText("Auto Play")
+    
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton and self.last_frame is not None:
+            pos = self.video_label.mapFromGlobal(event.globalPos())
+            click_position = QPoint(pos.x(), pos.y())
+            print(f"Clicked Position: {click_position.x(), click_position.y()}")
+            self.pos_click_position.append(click_position)
+            self.click_action.append(1)
+            # Draw a point on the frame
+        elif event.button() == Qt.RightButton and self.last_frame is not None:
+            pos = self.video_label.mapFromGlobal(event.globalPos())
+            click_position = QPoint(pos.x(), pos.y())
+            print(f"Clicked Position: {click_position.x(), click_position.y()}")
+            self.neg_click_position.append(click_position)
+            self.click_action.append(-1)
+        
+        self.draw_point()
+    
+    def draw_point(self):
+        frame = self.last_frame.copy()
+        for point in self.pos_click_position:
+            x, y = point.x(), point.y()
+            cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, channel = frame.shape
+            bytes_per_line = 3 * width
+            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+        
+        for point in self.neg_click_position:
+            x, y = point.x(), point.y()
+            cv2.circle(frame, (x, y), 5, (0, 0, 255), -1)
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, channel = frame.shape
+            bytes_per_line = 3 * width
+            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+        
+        self.video_label.setPixmap(QPixmap.fromImage(q_img))
 
     def submit_description(self):
         # Handle the submitted description
