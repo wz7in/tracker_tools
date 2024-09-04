@@ -108,12 +108,10 @@ class VideoPlayer(QWidget):
         self.remove_last_button = QPushButton("Remove Last Annotation", self)
         self.remove_last_button.clicked.connect(self.remove_last_annotation)
         toolbar_layout.addWidget(self.remove_last_button)
-        
-        # self.r_layout.addStretch(1)
 
         # Create a horizontal layout for the title and line
         annotation_title_layout = QHBoxLayout()
-        
+
         # Add a label for the per-frame annotation title
         annotation_title = QLabel("Per Video Annotation", self)
         annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
@@ -293,6 +291,7 @@ class VideoPlayer(QWidget):
             if self.current_frame < self.frame_count - 1:
                 self.current_frame += 1
                 self.update_frame(self.current_frame)
+                self.progress_slider.setValue(self.current_frame)
             else:
                 self.timer.stop()
                 self.play_button.setChecked(False)
