@@ -43,7 +43,7 @@ class VideoPlayer(QWidget):
         
         # Dynamic frame position label that floats above the slider
         self.frame_position_label = QLabel(self)
-        self.frame_position_label.setStyleSheet("background-color: white;")
+        self.frame_position_label.setStyleSheet("background-color: gray;")
         self.frame_position_label.setAlignment(Qt.AlignCenter)
         self.frame_position_label.setFixedSize(100, 20)
         self.frame_position_label.hide()  # Hide initially
@@ -75,7 +75,7 @@ class VideoPlayer(QWidget):
 
         # Add a label for the per-frame annotation title
         annotation_title = QLabel("Control Tool Box", self)
-        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        annotation_title.setAlignment(Qt.AlignCenter)  # Left align the title
         annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         annotation_title_layout.addWidget(annotation_title)
 
@@ -108,6 +108,11 @@ class VideoPlayer(QWidget):
         self.remove_last_button = QPushButton("Remove Last Annotation", self)
         self.remove_last_button.clicked.connect(self.remove_last_annotation)
         toolbar_layout.addWidget(self.remove_last_button)
+        
+        # remove_video_button
+        self.remove_video_button = QPushButton("Remove Video", self)
+        self.remove_video_button.clicked.connect(self.clear_video)
+        toolbar_layout.addWidget(self.remove_video_button)
 
         # Create a horizontal layout for the title and line
         annotation_title_layout = QHBoxLayout()
@@ -204,7 +209,22 @@ class VideoPlayer(QWidget):
         self.pos_click_position = []
         self.neg_click_position = []
         self.click_action = []
-        self.draw_point()
+        if self.last_frame is not None:
+            self.draw_point()
+    
+    def clear_video(self):
+        if self.cap is not None:
+            self.cap.release()
+        self.cap = None
+        self.video_label.clear()
+        self.progress_slider.setValue(0)
+        self.frame_position_label.hide()
+        self.keyframes = {}
+        self.selected_keyframe = None
+        self.update_keyframe_bar()
+        self.pos_click_position = []
+        self.neg_click_position = []
+        self.click_action = []
     
     def remove_last_annotation(self):
         if len(self.click_action) > 0 and self.click_action[-1] == 1 and len(self.pos_click_position) > 0:
@@ -213,7 +233,8 @@ class VideoPlayer(QWidget):
         elif len(self.click_action) > 0 and self.click_action[-1] == -1 and len(self.neg_click_position) > 0:
             self.neg_click_position.pop()
             self.click_action.pop()
-        self.draw_point()
+        if self.last_frame is not None:
+            self.draw_point()
     
     def load_video(self):
         video_path, _ = QFileDialog.getOpenFileName(self, "Select a Video", "", "Video Files (*.mp4 *.avi *.mov)")
@@ -258,6 +279,8 @@ class VideoPlayer(QWidget):
         self.update_frame(frame_number)
     
     def toggle_playback(self):
+        if self.cap is None:
+            return
         if self.play_button.isChecked():
             self.play_button.setText("Stop Auto Play")
             self.current_frame = self.progress_slider.value()
@@ -279,6 +302,7 @@ class VideoPlayer(QWidget):
         
         # Set the position of the label
         label_y = self.progress_slider.y() - 30  # Adjust the Y position above the slider
+        label_x = max(slider_x, min(label_x, slider_x + slider_width - self.frame_position_label.width()))
         self.frame_position_label.move(label_x, label_y)
         self.frame_position_label.show()  # Show the label
 
@@ -298,21 +322,45 @@ class VideoPlayer(QWidget):
                 self.play_button.setText("Auto Play")
     
     def mousePressEvent(self, event: QMouseEvent):
+        if self.last_frame is None:
+            return
         if event.button() == Qt.LeftButton and self.last_frame is not None:
             pos = self.video_label.mapFromGlobal(event.globalPos())
-            click_position = QPoint(pos.x(), pos.y())
-            print(f"Clicked Position: {click_position.x(), click_position.y()}")
+            gt_pos = self.get_align_point(pos.x(), pos.y())
+            if gt_pos is None:
+                return
+            click_position = QPoint(gt_pos[0], gt_pos[1])
             self.pos_click_position.append(click_position)
+            print(f"Clicked Position: {click_position}")
             self.click_action.append(1)
             # Draw a point on the frame
         elif event.button() == Qt.RightButton and self.last_frame is not None:
             pos = self.video_label.mapFromGlobal(event.globalPos())
-            click_position = QPoint(pos.x(), pos.y())
-            print(f"Clicked Position: {click_position.x(), click_position.y()}")
+            gt_pos = self.get_align_point(pos.x(), pos.y())
+            if gt_pos is None:
+                return
+            click_position = QPoint(gt_pos[0], gt_pos[1])
             self.neg_click_position.append(click_position)
+            print(f"Clicked Position: {click_position}")
             self.click_action.append(-1)
         
         self.draw_point()
+    
+    def get_align_point(self, x, y): 
+        label_height, label_width = self.video_label.height(), self.video_label.width()
+        resized_width = int(self.width * min(self.scale_width, self.scale_height))
+        resized_height = int(self.height * min(self.scale_width, self.scale_height))
+        offset_x = (label_width - resized_width) // 2
+        offset_y = (label_height - resized_height) // 2
+        x -= offset_x
+        y -= offset_y
+        
+        gt_shape = self.last_frame.shape
+        if x < 0 or y < 0 or x >= gt_shape[1] or y >= gt_shape[0]:
+            return None
+        
+        return (x, y)
+    
     
     def draw_point(self):
         frame = self.last_frame.copy()
@@ -320,17 +368,6 @@ class VideoPlayer(QWidget):
 
         for point in self.pos_click_position:
             x, y = point.x(), point.y()
-
-            resized_width = int(self.width * min(self.scale_width, self.scale_height))
-            resized_height = int(self.height * min(self.scale_width, self.scale_height))
-
-            # Calculate the offsets for centering
-            offset_x = (label_width - resized_width) // 2
-            offset_y = (label_height - resized_height) // 2
-
-            x -= offset_x
-            y -= offset_y
-    
             cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
@@ -338,17 +375,6 @@ class VideoPlayer(QWidget):
         
         for point in self.neg_click_position:
             x, y = point.x(), point.y()
-
-            resized_width = int(self.width * min(self.scale_width, self.scale_height))
-            resized_height = int(self.height * min(self.scale_width, self.scale_height))
-
-            # Calculate the offsets for centering
-            offset_x = (label_width - resized_width) // 2
-            offset_y = (label_height - resized_height) // 2
-
-            x -= offset_x
-            y -= offset_y
-
             cv2.circle(frame, (x, y), 5, (0, 0, 255), -1)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
@@ -386,7 +412,7 @@ class VideoPlayer(QWidget):
     def update_keyframe_bar(self):
         # Clear the keyframe bar
         keyframe_image = QImage(self.keyframe_bar.width(), self.keyframe_bar.height(), QImage.Format_RGB32)
-        keyframe_image.fill(Qt.white)
+        keyframe_image.fill(Qt.gray)
 
         painter = QPainter(keyframe_image)
         for frame, key_type in self.keyframes.items():
