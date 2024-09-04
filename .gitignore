@@ -3,4 +3,5 @@ segment-anything-2
 videos
 .vscode/
 .DS_Store
+*avi
 **/__pycache__/
