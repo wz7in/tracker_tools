@@ -348,12 +348,16 @@ class VideoPlayer(QWidget):
 
             x -= offset_x
             y -= offset_y
-            
+
             cv2.circle(frame, (x, y), 5, (0, 0, 255), -1)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
         
+        if len(self.pos_click_position)==0 and len(self.neg_click_position)==0:
+            height, width, channel = frame.shape
+            bytes_per_line = 3 * width
+            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
         self.video_label.setPixmap(QPixmap.fromImage(q_img))
 
     def submit_description(self):
