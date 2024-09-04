@@ -231,16 +231,16 @@ class VideoPlayer(QWidget):
             if ret:
                 # Resize frame to fit the QLabel while keeping aspect ratio
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                height, width, channel = frame.shape
+                self.height, self.width, channel = frame.shape
 
                 # Scale the image to fit QLabel
                 label_width = self.video_label.width()
                 label_height = self.video_label.height()
-                scale_width = label_width / width
-                scale_height = label_height / height
-                scale = min(scale_width, scale_height)
-                new_width = int(width * scale)
-                new_height = int(height * scale)
+                self.scale_width = label_width / self.width
+                self.scale_height = label_height / self.height
+                scale = min(self.scale_width, self.scale_height)
+                new_width = int(self.width * scale)
+                new_height = int(self.height * scale)
 
                 resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
@@ -251,7 +251,7 @@ class VideoPlayer(QWidget):
                 # Update and reposition frame position label
                 self.update_frame_position_label()
 
-                self.last_frame = frame
+                self.last_frame = resized_frame
 
     def seek_video(self):
         frame_number = self.progress_slider.value()
@@ -316,18 +316,40 @@ class VideoPlayer(QWidget):
     
     def draw_point(self):
         frame = self.last_frame.copy()
+        label_height, label_width = self.video_label.height(), self.video_label.width()
+
         for point in self.pos_click_position:
             x, y = point.x(), point.y()
+
+            resized_width = int(self.width * min(self.scale_width, self.scale_height))
+            resized_height = int(self.height * min(self.scale_width, self.scale_height))
+
+            # Calculate the offsets for centering
+            offset_x = (label_width - resized_width) // 2
+            offset_y = (label_height - resized_height) // 2
+
+            x -= offset_x
+            y -= offset_y
+    
             cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
         
         for point in self.neg_click_position:
             x, y = point.x(), point.y()
+
+            resized_width = int(self.width * min(self.scale_width, self.scale_height))
+            resized_height = int(self.height * min(self.scale_width, self.scale_height))
+
+            # Calculate the offsets for centering
+            offset_x = (label_width - resized_width) // 2
+            offset_y = (label_height - resized_height) // 2
+
+            x -= offset_x
+            y -= offset_y
+            
             cv2.circle(frame, (x, y), 5, (0, 0, 255), -1)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
