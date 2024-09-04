@@ -1,9 +1,0 @@
-mode: sam
-sam_ckpt_path: //Users/wzqin/Library/CloudStorage/OneDrive-个人/BUAA/project/robot/tapnet/segment-anything-2/checkpoints/sam2_hiera_large.pt
-model_config: //Users/wzqin/Library/CloudStorage/OneDrive-个人/BUAA/project/robot/tapnet/segment-anything-2/sam2_configs/sam2_hiera_l.yaml
-video_path: /Users/wzqin/Library/CloudStorage/OneDrive-个人/BUAA/project/robot/tapnet/videos/1.mp4
-threshold: 0.0
-select_frame: 0
-save_visualization: true
-device: cpu
-save_path: './sam.avi'
