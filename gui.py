@@ -55,7 +55,7 @@ class VideoPlayer(QWidget):
 
         # Print frame position button
         self.print_button = QPushButton("Print Frame Position", self)
-        self.print_button.clicked.connect(self.print_frame_position)
+        self.print_button.clicked.connect(self.get_frame_position)
         video_layout.addWidget(self.print_button)
         
         # Add video layout to the main layout
@@ -198,19 +198,18 @@ class VideoPlayer(QWidget):
         self.cap = None
         self.frame_count = 0
         self.last_frame = None
+        self.tracking_points = dict()
+        self.tracking_masks = dict()
         
-        self.pos_click_position = []
-        self.neg_click_position = []
-        self.click_action = []
         self.timer = QTimer()
         self.timer.timeout.connect(self.play_video)
 
     def clear_annotations(self):
-        self.pos_click_position = []
-        self.neg_click_position = []
-        self.click_action = []
+        self.tracking_points[self.progress_slider.value()]['pos'] = []
+        self.tracking_points[self.progress_slider.value()]['neg'] = []
+        self.tracking_points[self.progress_slider.value()]['labels'] = []
         if self.last_frame is not None:
-            self.draw_point()
+            self.draw_image()
     
     def clear_video(self):
         if self.cap is not None:
@@ -222,28 +221,38 @@ class VideoPlayer(QWidget):
         self.keyframes = {}
         self.selected_keyframe = None
         self.update_keyframe_bar()
-        self.pos_click_position = []
-        self.neg_click_position = []
-        self.click_action = []
+        self.tracking_points = dict()
+        self.tracking_masks = dict()
+        self.last_frame = None
     
     def remove_last_annotation(self):
-        if len(self.click_action) > 0 and self.click_action[-1] == 1 and len(self.pos_click_position) > 0:
-            self.pos_click_position.pop()
-            self.click_action.pop()
-        elif len(self.click_action) > 0 and self.click_action[-1] == -1 and len(self.neg_click_position) > 0:
-            self.neg_click_position.pop()
-            self.click_action.pop()
+        click_action = self.tracking_points[self.progress_slider.value()]['labels']
+        pos_click_position = self.tracking_points[self.progress_slider.value()]['pos']
+        neg_click_position = self.tracking_points[self.progress_slider.value()]['neg']
+        
+        if len(click_action) > 0 and click_action[-1] == 1 and len(pos_click_position) > 0:
+            self.tracking_points[self.progress_slider.value()]['pos'].pop()
+            self.tracking_points[self.progress_slider.value()]['labels'].pop()
+        elif len(click_action) > 0 and click_action[-1] == -1 and len(neg_click_position) > 0:
+            self.tracking_points[self.progress_slider.value()]['neg'].pop()
+            self.tracking_points[self.progress_slider.value()]['labels'].pop()
         if self.last_frame is not None:
-            self.draw_point()
+            self.draw_image()
     
     def load_video(self):
         video_path, _ = QFileDialog.getOpenFileName(self, "Select a Video", "", "Video Files (*.mp4 *.avi *.mov)")
         if video_path:
             self.cap = cv2.VideoCapture(video_path)
             self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            for i in range(self.frame_count):
+                self.tracking_points[i] = dict(
+                    pos=[], neg=[], labels=[]
+                )
+                self.tracking_masks[i] = []
             self.progress_slider.setMaximum(self.frame_count - 1)
             self.update_frame(0)
             self.update_keyframe_bar()  # Initialize keyframe bar
+            
 
     def update_frame(self, frame_number):
         if self.cap is not None:
@@ -265,14 +274,17 @@ class VideoPlayer(QWidget):
 
                 resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
-                bytes_per_line = 3 * new_width
-                q_img = QImage(resized_frame.data, new_width, new_height, bytes_per_line, QImage.Format_RGB888)
-                self.video_label.setPixmap(QPixmap.fromImage(q_img))
+                # bytes_per_line = 3 * new_width
+                # q_img = QImage(resized_frame.data, new_width, new_height, bytes_per_line, QImage.Format_RGB888)
+                # self.video_label.setPixmap(QPixmap.fromImage(q_img))
                 
                 # Update and reposition frame position label
                 self.update_frame_position_label()
 
                 self.last_frame = resized_frame
+                
+                self.draw_image()
+                
 
     def seek_video(self):
         frame_number = self.progress_slider.value()
@@ -306,9 +318,10 @@ class VideoPlayer(QWidget):
         self.frame_position_label.move(label_x, label_y)
         self.frame_position_label.show()  # Show the label
 
-    def print_frame_position(self):
+    def get_frame_position(self):
         current_position = self.progress_slider.value()
         print(f"Current Frame Position: {current_position}")
+        return current_position
     
     def play_video(self):
         if self.cap is not None:
@@ -330,9 +343,13 @@ class VideoPlayer(QWidget):
             if gt_pos is None:
                 return
             click_position = QPoint(gt_pos[0], gt_pos[1])
-            self.pos_click_position.append(click_position)
+            # self.pos_click_position.append(click_position)
             print(f"Clicked Position: {click_position}")
-            self.click_action.append(1)
+            # self.click_action.append(1)
+            
+            self.tracking_points[self.progress_slider.value()]['pos'].append(click_position)
+            self.tracking_points[self.progress_slider.value()]['labels'].append(1)
+            
             # Draw a point on the frame
         elif event.button() == Qt.RightButton and self.last_frame is not None:
             pos = self.video_label.mapFromGlobal(event.globalPos())
@@ -340,11 +357,13 @@ class VideoPlayer(QWidget):
             if gt_pos is None:
                 return
             click_position = QPoint(gt_pos[0], gt_pos[1])
-            self.neg_click_position.append(click_position)
+            # self.neg_click_position.append(click_position)
             print(f"Clicked Position: {click_position}")
-            self.click_action.append(-1)
-        
-        self.draw_point()
+            # self.click_action.append(-1)
+            self.tracking_points[self.progress_slider.value()]['neg'].append(click_position)
+            self.tracking_points[self.progress_slider.value()]['labels'].append(-1)
+            
+        self.draw_image()
     
     def get_align_point(self, x, y): 
         label_height, label_width = self.video_label.height(), self.video_label.width()
@@ -360,30 +379,31 @@ class VideoPlayer(QWidget):
             return None
         
         return (x, y)
-    
-    
-    def draw_point(self):
+     
+    def draw_image(self):
         frame = self.last_frame.copy()
-        label_height, label_width = self.video_label.height(), self.video_label.width()
+        pos_click_position = self.tracking_points[self.progress_slider.value()]['pos']
+        neg_click_position = self.tracking_points[self.progress_slider.value()]['neg']
 
-        for point in self.pos_click_position:
+        for point in pos_click_position:
             x, y = point.x(), point.y()
             cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
         
-        for point in self.neg_click_position:
+        for point in neg_click_position:
             x, y = point.x(), point.y()
-            cv2.circle(frame, (x, y), 5, (0, 0, 255), -1)
+            cv2.circle(frame, (x, y), 5, (255, 0, 0), -1)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
         
-        if len(self.pos_click_position)==0 and len(self.neg_click_position)==0:
+        if len(pos_click_position)==0 and len(neg_click_position)==0:
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+        
         self.video_label.setPixmap(QPixmap.fromImage(q_img))
 
     def submit_description(self):
