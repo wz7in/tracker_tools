@@ -4,5 +4,6 @@ videos
 .vscode/
 .DS_Store
 *avi
+*mp4
 *.pt
 **/__pycache__/
