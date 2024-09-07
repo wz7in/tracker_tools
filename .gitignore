@@ -1,9 +1,11 @@
 checkpoints
-segment-anything-2
+segment-anything-2/
+co-tracker/
 videos
 .vscode/
 .DS_Store
-*avi
-*mp4
-*.pt
+**/*.avi
+**/*.mp4
+**/*.pt
+**/*.pth
 **/__pycache__/
