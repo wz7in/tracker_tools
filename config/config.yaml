@@ -1,0 +1,21 @@
+sam:
+  mode: sam
+  sam_ckpt_path: //mnt/petrelfs/wangziqin/project/tracker_tools/checkpoints/sam2_hiera_large.pt
+  model_config: //mnt/petrelfs/wangziqin/project/tracker_tools/segment-anything-2/sam2_configs/sam2_hiera_l.yaml
+  video_path: /mnt/petrelfs/wangziqin/project/tracker_tools/demo/demo.mp4
+  threshold: 0.0
+  select_frame: 0
+  save_visualization: true
+  device: cuda
+  save_path: '/mnt/petrelfs/wangziqin/project/tracker_tools/videos/sam.avi'
+
+cotracker:
+  mode: mask # point or mask
+  cotracker_ckpt_path: /mnt/petrelfs/wangziqin/project/tracker_tools/co-tracker/checkpoints/cotracker2.pth
+  video_path: /mnt/petrelfs/wangziqin/project/tracker_tools/demo/demo.mp4
+  select_frame: 0
+  save_visualization: true
+  save_path: '/mnt/petrelfs/wangziqin/project/tracker_tools/videos/tap.avi'
+  grid_size: 10
+  device: cuda
+  sample_points_number: 10
