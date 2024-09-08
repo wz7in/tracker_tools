@@ -1,4 +1,6 @@
 import sys
+import os
+import json
 from PyQt5.QtCore import QPoint, QTimer, Qt
 import cv2
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, 
@@ -68,7 +70,7 @@ class VideoPlayer(QWidget):
         main_layout.addWidget(separator)
 
         # Toolbar layout
-        toolbar_layout = QVBoxLayout()
+        self.toolbar_layout = QVBoxLayout()
 
         # Create a horizontal layout for the title and line
         annotation_title_layout = QHBoxLayout()
@@ -87,7 +89,7 @@ class VideoPlayer(QWidget):
         annotation_title_layout.addWidget(line)
 
         # Add the horizontal layout to the toolbar layout
-        toolbar_layout.addLayout(annotation_title_layout)
+        self.toolbar_layout.addLayout(annotation_title_layout)
 
         # self.load_button = QPushButton("Load Video", self)
         # self.load_button.clicked.connect(self.load_video)
@@ -97,22 +99,27 @@ class VideoPlayer(QWidget):
         self.play_button = QPushButton("Auto Play", self)
         self.play_button.setCheckable(True)
         self.play_button.clicked.connect(self.toggle_playback)
-        toolbar_layout.addWidget(self.play_button)
+        self.toolbar_layout.addWidget(self.play_button)
         
         # clear_all_button
         self.clear_all_button = QPushButton("Clear Annotations", self)
         self.clear_all_button.clicked.connect(self.clear_annotations)
-        toolbar_layout.addWidget(self.clear_all_button)
+        self.toolbar_layout.addWidget(self.clear_all_button)
         
         # remove_last_button
         self.remove_last_button = QPushButton("Remove Last Annotation", self)
         self.remove_last_button.clicked.connect(self.remove_last_annotation)
-        toolbar_layout.addWidget(self.remove_last_button)
+        self.toolbar_layout.addWidget(self.remove_last_button)
         
         # remove_video_button
         self.remove_video_button = QPushButton("Remove Video", self)
         self.remove_video_button.clicked.connect(self.clear_video)
-        toolbar_layout.addWidget(self.remove_video_button)
+        self.toolbar_layout.addWidget(self.remove_video_button)
+
+        # remove_video_button
+        self.load_clip_data_button = QPushButton("Load Clip Preprocess Data", self)
+        self.load_clip_data_button.clicked.connect(self.load_clip_data)
+        self.toolbar_layout.addWidget(self.load_clip_data_button)
 
         # Create a horizontal layout for the title and line
         annotation_title_layout = QHBoxLayout()
@@ -131,17 +138,17 @@ class VideoPlayer(QWidget):
         annotation_title_layout.addWidget(line)
 
         # Add the horizontal layout to the toolbar layout
-        toolbar_layout.addLayout(annotation_title_layout)
+        self.toolbar_layout.addLayout(annotation_title_layout)
         
         # Language description input
         self.description_input = QLineEdit(self)
         self.description_input.setPlaceholderText("Enter description...")
-        toolbar_layout.addWidget(self.description_input)
+        self.toolbar_layout.addWidget(self.description_input)
         
         # Submit button for language description
         self.submit_description_button = QPushButton("Submit Description", self)
         self.submit_description_button.clicked.connect(self.submit_description)
-        toolbar_layout.addWidget(self.submit_description_button)
+        self.toolbar_layout.addWidget(self.submit_description_button)
 
         # Create a horizontal layout for the title and line
         annotation_title_layout = QHBoxLayout()
@@ -160,7 +167,7 @@ class VideoPlayer(QWidget):
         annotation_title_layout.addWidget(line)
 
         # Add the horizontal layout to the toolbar layout
-        toolbar_layout.addLayout(annotation_title_layout)
+        self.toolbar_layout.addLayout(annotation_title_layout)
 
         # Keyframe controls
         keyframe_option_layout = QHBoxLayout()
@@ -171,7 +178,7 @@ class VideoPlayer(QWidget):
         self.keyframe_button_group.addButton(self.end_button)
         keyframe_option_layout.addWidget(self.start_button)
         keyframe_option_layout.addWidget(self.end_button)
-        toolbar_layout.addLayout(keyframe_option_layout)
+        self.toolbar_layout.addLayout(keyframe_option_layout)
 
         keyframe_button_layout = QHBoxLayout()
         # Mark keyframe button
@@ -185,13 +192,33 @@ class VideoPlayer(QWidget):
         keyframe_button_layout.addWidget(self.remove_keyframe_button)
 
         # Add the horizontal layout to the toolbar layout
-        toolbar_layout.addLayout(keyframe_button_layout)
+        self.toolbar_layout.addLayout(keyframe_button_layout)
+
+        # Sam button
+        sam_button_layout = QHBoxLayout()
+
+        self.sam_button = QPushButton("Sam", self)
+        self.sam_button.clicked.connect(self.get_sam_result)
+        sam_button_layout.addWidget(self.sam_button)
+
+        self.process_single_frame = QRadioButton("process_single_frame", self)
+        sam_button_layout.addWidget(self.process_single_frame)
         
+        self.toolbar_layout.addLayout(sam_button_layout)
+
+        # Tracker button
+        tap_button_layout = QHBoxLayout()
+
+        self.tap_button = QPushButton("KeyPoint Tracker", self)
+        self.tap_button.clicked.connect(self.get_tap_result)
+        self.toolbar_layout.addWidget(self.tap_button)
+
+
         # Add spacer to push the items to the top
-        toolbar_layout.addStretch()
+        self.toolbar_layout.addStretch()
         
         # Add toolbar layout to the main layout
-        main_layout.addLayout(toolbar_layout)
+        main_layout.addLayout(self.toolbar_layout)
 
         self.setLayout(main_layout)
 
@@ -210,6 +237,39 @@ class VideoPlayer(QWidget):
         self.tracking_points[self.progress_slider.value()]['labels'] = []
         if self.last_frame is not None:
             self.draw_image()
+
+    def load_clip_data(self):
+        video_name = self.video_path.split('/')[-1].split('.')[0]
+        clip_data_pth = f'/Users/dingzihan/Documents/projects/tracker_tools/{video_name}.json'
+        with open(clip_data_pth, 'r') as f:
+            clip_data = json.load(f)
+
+        caption_ls = []
+        for clip_id, clip_info in clip_data.items():
+            self.keyframes[clip_info['s_e'][0]] = 'start'
+            self.keyframes[clip_info['s_e'][1]] = 'end'
+            caption_ls.append(clip_info['des'])
+
+        # update keyframe bar
+        self.update_keyframe_bar()
+
+        # update caption options
+        self.clip_caption_ls = caption_ls
+
+        # create description choice buttons dynamically
+        for clip_des_ls in self.clip_caption_ls:
+            self.label = QLabel('Please choose the best description:')
+            self.toolbar_layout.addWidget(self.label)
+
+            self.des_choice_buttons = []
+            
+            for des in clip_des_ls:
+                choice_button = QRadioButton(des)
+                self.toolbar_layout.addWidget(choice_button)
+                self.des_choice_buttons.append(choice_button)
+        
+
+
     
     def clear_video(self):
         if self.cap is not None:
@@ -241,6 +301,7 @@ class VideoPlayer(QWidget):
     
     def load_video(self):
         video_path, _ = QFileDialog.getOpenFileName(self, "Select a Video", "", "Video Files (*.mp4 *.avi *.mov)")
+        self.video_path = video_path
         if video_path:
             self.cap = cv2.VideoCapture(video_path)
             self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -252,6 +313,12 @@ class VideoPlayer(QWidget):
             self.progress_slider.setMaximum(self.frame_count - 1)
             self.update_frame(0)
             self.update_keyframe_bar()  # Initialize keyframe bar
+
+        # check if clip prepocess info is exist, load automatically
+        video_name = self.video_path.split('/')[-1].split('.')[0]
+        clip_data_pth = f'/Users/dingzihan/Documents/projects/tracker_tools/{video_name}.json'
+        if os.path.exists(clip_data_pth):
+            self.load_clip_data()
             
 
     def update_frame(self, frame_number):
@@ -333,6 +400,25 @@ class VideoPlayer(QWidget):
                 self.timer.stop()
                 self.play_button.setChecked(False)
                 self.play_button.setText("Auto Play")
+
+    def get_sam_result(self):
+        tracking_points = self.tracking_points
+        frame_id = self.progress_slider.value()
+        video_name = self.video_path
+
+        if self.process_single_frame.isChecked():
+            single_frame = True
+        else:
+            single_frame = False
+
+        print(tracking_points, frame_id, video_name, single_frame)
+
+    def get_tap_result(self):
+        tracking_points = self.tracking_points
+        frame_id = self.progress_slider.value()
+        video_name = self.video_path
+
+        print(tracking_points, frame_id, video_name)
     
     def mousePressEvent(self, event: QMouseEvent):
         if self.last_frame is None:
