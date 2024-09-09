@@ -1,0 +1,21 @@
+sam:
+  mode: sam
+  sam_ckpt_path: ./segment-anything-2/checkpoints/sam2_hiera_large.pt
+  model_config: sam2_hiera_l.yaml
+  video_path: ./demo/demo.mp4
+  threshold: 0.0
+  select_frame: 0
+  save_visualization: true
+  device: cuda
+  save_path: './videos/sam.avi'
+
+cotracker:
+  mode: mask # point or mask
+  cotracker_ckpt_path: ./co-tracker/checkpoints/cotracker2.pth
+  video_path: ./demo/demo.mp4
+  select_frame: 0
+  save_visualization: true
+  save_path: './videos/tap.avi'
+  grid_size: 10
+  device: cuda
+  sample_points_number: 10
