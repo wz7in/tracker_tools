@@ -8,6 +8,10 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton,
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
 from PyQt5.QtCore import Qt, QRect, QEvent, QPoint
 
+import yaml
+from client_utils import request_sam, request_cotracker
+from cotracker.utils.visualizer import Visualizer
+
 
 class VideoPlayer(QWidget):
     def __init__(self):
@@ -121,6 +125,25 @@ class VideoPlayer(QWidget):
         self.load_clip_data_button.clicked.connect(self.load_clip_data)
         self.toolbar_layout.addWidget(self.load_clip_data_button)
 
+        # visualize layout
+        vis_button_layout = QHBoxLayout()
+
+        self.vis_button = QPushButton("Visualize Video", self)
+        self.vis_button.clicked.connect(self.load_res)
+        vis_button_layout.addWidget(self.vis_button)
+
+        self.vis_ori = QRadioButton("original video", self)
+        vis_button_layout.addWidget(self.vis_ori)
+
+        self.vis_sam = QRadioButton("sam result", self)
+        vis_button_layout.addWidget(self.vis_sam)
+
+        self.vis_tracker = QRadioButton("track result", self)
+        vis_button_layout.addWidget(self.vis_tracker)
+
+        self.toolbar_layout.addLayout(vis_button_layout)
+
+
         # Create a horizontal layout for the title and line
         annotation_title_layout = QHBoxLayout()
 
@@ -211,8 +234,9 @@ class VideoPlayer(QWidget):
 
         self.tap_button = QPushButton("KeyPoint Tracker", self)
         self.tap_button.clicked.connect(self.get_tap_result)
-        self.toolbar_layout.addWidget(self.tap_button)
+        tap_button_layout.addWidget(self.tap_button)
 
+        self.toolbar_layout.addLayout(tap_button_layout)
 
         # Add spacer to push the items to the top
         self.toolbar_layout.addStretch()
@@ -230,6 +254,27 @@ class VideoPlayer(QWidget):
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.play_video)
+
+        # add config
+        config_path = "./config/config.yaml"
+        with open(config_path, "r") as f:
+            self.model_config = yaml.load(f, Loader=yaml.FullLoader)
+        self.sam_config = self.model_config["sam"]
+        self.co_tracker_config = self.model_config["cotracker"]
+
+        # initialize self.vis_track_res
+        self.vis_track_res = False
+
+    def load_res(self):
+        if self.vis_sam.isChecked():
+            self.vis_track_res = True
+            self.track_res = self.sam_res
+        elif self.vis_tracker.isChecked():
+            self.vis_track_res = True
+            self.track_res = self.tracker_res
+
+        frame_number = self.progress_slider.value()
+        self.update_frame(frame_number)
 
     def clear_annotations(self):
         self.tracking_points[self.progress_slider.value()]['pos'] = []
@@ -327,6 +372,8 @@ class VideoPlayer(QWidget):
             ret, frame = self.cap.read()
             if ret:
                 # Resize frame to fit the QLabel while keeping aspect ratio
+                if self.vis_track_res:
+                    frame = self.track_res[frame_number]
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 self.height, self.width, channel = frame.shape
 
@@ -403,22 +450,68 @@ class VideoPlayer(QWidget):
 
     def get_sam_result(self):
         tracking_points = self.tracking_points
-        frame_id = self.progress_slider.value()
-        video_name = self.video_path
+        positive_points = []
+        negative_points = []
+        labels = []
+        # select_frame = []
+        for frame_id, frame_pts in tracking_points.items():
+            if frame_pts['pos'] != []:
+                positive_points.extend([[pt.x(), pt.y()] for pt in frame_pts['pos']])
+            if frame_pts['neg'] != []:
+                negative_points.extend([[pt.x(), pt.y()] for pt in frame_pts['neg']])
+            if (frame_pts['pos'] != []) or (frame_pts['neg'] != []):
+                labels.extend(frame_pts['labels'])
+                select_frame = frame_id
+                # select_frame.extend([frame_id] * len(labels))
+
+        # print(positive_points, negative_points, labels, select_frame)
+
+        # frame_id = self.progress_slider.value()
+        # video_name = self.video_path
 
         if self.process_single_frame.isChecked():
-            single_frame = True
+            is_video = False
         else:
-            single_frame = False
+            is_video = True
 
-        print(tracking_points, frame_id, video_name, single_frame)
+        self.sam_config['is_video'] = is_video
+        self.sam_config['positive_points'] = positive_points
+        self.sam_config['negative_points'] = negative_points
+        self.sam_config['labels'] = labels
+        self.sam_config['select_frame'] = select_frame
+
+        masks, mask_images = request_sam(self.sam_config)
+
+        self.sam_res = mask_images
 
     def get_tap_result(self):
         tracking_points = self.tracking_points
-        frame_id = self.progress_slider.value()
-        video_name = self.video_path
+        # frame_id = self.progress_slider.value()
+        # video_name = self.video_path
 
-        print(tracking_points, frame_id, video_name)
+        tracking_points = self.tracking_points
+        points = []
+        negative_points = []
+        labels = []
+        select_frame = []
+        for frame_id, frame_pts in tracking_points.items():
+            if frame_pts['pos'] != []:
+                points.extend([[pt.x(), pt.y()] for pt in frame_pts['pos']])
+            if frame_pts['neg'] != []:
+                points.extend([[pt.x(), pt.y()] for pt in frame_pts['neg']])
+            if (frame_pts['pos'] != []) or (frame_pts['neg'] != []):
+                # labels.extend(frame_pts['labels'])
+                select_frame.extend([[frame_id]] * len(frame_pts['labels']))
+        
+        self.co_tracker_config['points'] = points
+        # self.co_tracker_config['labels'] = labels
+        self.co_tracker_config['select_frame'] = select_frame
+        self.co_tracker_config['mode'] = 'point'
+
+        pred_tracks, pred_visibility, images = request_cotracker(self.sam_config, self.co_tracker_config)
+
+        self.tracker_res = images
+
     
     def mousePressEvent(self, event: QMouseEvent):
         if self.last_frame is None:
