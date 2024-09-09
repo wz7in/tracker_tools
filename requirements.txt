@@ -2,4 +2,6 @@ git+https://github.com/google-deepmind/tapnet.git
 tensorflow
 tensorflow_datasets
 ipdb
+flask
+PYQT5
 imageio[ffmpeg]

@@ -23,7 +23,7 @@ if __name__ == "__main__":
 
     # read config from config file
     with open(args.config, "r") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+        config = yaml.load(f, Loader=yaml.FullLoader)['sam']
 
     assert config["mode"] == args.mode, "mode of config file and args should be same"
 

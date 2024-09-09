@@ -4,7 +4,7 @@ import json
 from PyQt5.QtCore import QPoint, QTimer, Qt
 import cv2
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, 
-                             QLabel, QSlider, QFileDialog, QLineEdit, QHBoxLayout, QFrame, QButtonGroup, QRadioButton, QToolTip)
+                             QLabel, QSlider, QFileDialog, QLineEdit, QHBoxLayout, QFrame, QButtonGroup, QRadioButton, QToolTip, QComboBox)
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
 from PyQt5.QtCore import Qt, QRect, QEvent, QPoint
 
@@ -81,7 +81,7 @@ class VideoPlayer(QWidget):
 
         # Add a label for the per-frame annotation title
         annotation_title = QLabel("Control Tool Box", self)
-        annotation_title.setAlignment(Qt.AlignCenter)  # Left align the title
+        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
         annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         annotation_title_layout.addWidget(annotation_title)
 
@@ -217,26 +217,40 @@ class VideoPlayer(QWidget):
         # Add the horizontal layout to the toolbar layout
         self.toolbar_layout.addLayout(keyframe_button_layout)
 
-        # Sam button
-        sam_button_layout = QHBoxLayout()
-
-        self.sam_button = QPushButton("Sam", self)
-        self.sam_button.clicked.connect(self.get_sam_result)
-        sam_button_layout.addWidget(self.sam_button)
-
-        self.process_single_frame = QRadioButton("process_single_frame", self)
-        sam_button_layout.addWidget(self.process_single_frame)
+        function_title_layout = QHBoxLayout()
+        function_title = QLabel("Auto Label Tools", self)
+        function_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        function_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+        function_title_layout.addWidget(function_title)
         
-        self.toolbar_layout.addLayout(sam_button_layout)
-
-        # Tracker button
-        tap_button_layout = QHBoxLayout()
-
-        self.tap_button = QPushButton("KeyPoint Tracker", self)
-        self.tap_button.clicked.connect(self.get_tap_result)
-        tap_button_layout.addWidget(self.tap_button)
-
-        self.toolbar_layout.addLayout(tap_button_layout)
+        line = QFrame(self)
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet("color: grey;")  # Set the same color as the title
+        function_title_layout.addWidget(line)
+        self.toolbar_layout.addLayout(function_title_layout)
+        
+        # Anno buttons
+        anno_button_layout = QHBoxLayout()
+        self.anno_function_select = QComboBox()
+        self.anno_function_select.addItem('sam')
+        self.anno_function_select.addItem('tracker')
+        
+        # button params for different functions
+        self.button_param_select = QComboBox()
+        self.button_param_select.addItem('Frame Mode')
+        self.button_param_select.addItem('Video Mode')
+        
+        self.anno_function_select.currentIndexChanged.connect(self.update_function_select)
+    
+        click_action_button = QPushButton("Run", self)
+        # select color
+        click_action_button.clicked.connect(self.get_anno_result)
+        anno_button_layout.addWidget(self.anno_function_select)
+        anno_button_layout.addWidget(self.button_param_select)
+        anno_button_layout.addWidget(click_action_button)
+        self.toolbar_layout.addLayout(anno_button_layout)
+        
 
         # Add spacer to push the items to the top
         self.toolbar_layout.addStretch()
@@ -265,6 +279,23 @@ class VideoPlayer(QWidget):
         # initialize self.vis_track_res
         self.vis_track_res = False
 
+    def get_anno_result(self):
+        if self.anno_function_select.currentText() == 'sam':
+            self.get_sam_result()
+        elif self.anno_function_select.currentText() == 'tracker':
+            self.get_tap_result()
+    
+    def update_function_select(self):
+        if self.anno_function_select.currentText() == 'sam':
+            self.button_param_select.clear()
+            self.button_param_select.addItem('Frame Mode')
+            self.button_param_select.addItem('Video Mode')
+        elif self.anno_function_select.currentText() == 'tracker':
+            self.button_param_select.clear()
+            self.button_param_select.addItem('Point Mode')
+            self.button_param_select.addItem('Mask Mode')
+            self.button_param_select.addItem('Grid Mode')
+    
     def load_res(self):
         if self.vis_sam.isChecked():
             self.vis_track_res = True
@@ -280,7 +311,9 @@ class VideoPlayer(QWidget):
 
     def clear_annotations(self):
         self.tracking_points[self.progress_slider.value()]['pos'] = []
+        self.tracking_points[self.progress_slider.value()]['raw_pos'] = []
         self.tracking_points[self.progress_slider.value()]['neg'] = []
+        self.tracking_points[self.progress_slider.value()]['raw_neg'] = []
         self.tracking_points[self.progress_slider.value()]['labels'] = []
         if self.last_frame is not None:
             self.draw_image()
@@ -314,10 +347,7 @@ class VideoPlayer(QWidget):
                 choice_button = QRadioButton(des)
                 self.toolbar_layout.addWidget(choice_button)
                 self.des_choice_buttons.append(choice_button)
-        
-
-
-    
+           
     def clear_video(self):
         if self.cap is not None:
             self.cap.release()
@@ -339,9 +369,11 @@ class VideoPlayer(QWidget):
         
         if len(click_action) > 0 and click_action[-1] == 1 and len(pos_click_position) > 0:
             self.tracking_points[self.progress_slider.value()]['pos'].pop()
+            self.tracking_points[self.progress_slider.value()]['raw_pos'].pop()
             self.tracking_points[self.progress_slider.value()]['labels'].pop()
         elif len(click_action) > 0 and click_action[-1] == -1 and len(neg_click_position) > 0:
             self.tracking_points[self.progress_slider.value()]['neg'].pop()
+            self.tracking_points[self.progress_slider.value()]['raw_neg'].pop()
             self.tracking_points[self.progress_slider.value()]['labels'].pop()
         if self.last_frame is not None:
             self.draw_image()
@@ -354,7 +386,7 @@ class VideoPlayer(QWidget):
             self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
             for i in range(self.frame_count):
                 self.tracking_points[i] = dict(
-                    pos=[], neg=[], labels=[]
+                    pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[]
                 )
                 self.tracking_masks[i] = []
             self.progress_slider.setMaximum(self.frame_count - 1)
@@ -367,7 +399,6 @@ class VideoPlayer(QWidget):
         if os.path.exists(clip_data_pth):
             self.load_clip_data()
             
-
     def update_frame(self, frame_number):
         if self.cap is not None:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
@@ -384,15 +415,11 @@ class VideoPlayer(QWidget):
                 label_height = self.video_label.height()
                 self.scale_width = label_width / self.width
                 self.scale_height = label_height / self.height
-                scale = min(self.scale_width, self.scale_height)
-                new_width = int(self.width * scale)
-                new_height = int(self.height * scale)
+                self.scale = min(self.scale_width, self.scale_height)
+                new_width = int(self.width * self.scale)
+                new_height = int(self.height * self.scale)
 
                 resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
-
-                # bytes_per_line = 3 * new_width
-                # q_img = QImage(resized_frame.data, new_width, new_height, bytes_per_line, QImage.Format_RGB888)
-                # self.video_label.setPixmap(QPixmap.fromImage(q_img))
                 
                 # Update and reposition frame position label
                 self.update_frame_position_label()
@@ -401,7 +428,6 @@ class VideoPlayer(QWidget):
                 
                 self.draw_image()
                 
-
     def seek_video(self):
         frame_number = self.progress_slider.value()
         self.update_frame(frame_number)
@@ -450,70 +476,72 @@ class VideoPlayer(QWidget):
                 self.play_button.setChecked(False)
                 self.play_button.setText("Auto Play")
 
-    def get_sam_result(self):
+    def set_sam_config(self):
+        
         tracking_points = self.tracking_points
         positive_points = []
         negative_points = []
         labels = []
-        # select_frame = []
-        for frame_id, frame_pts in tracking_points.items():
-            if frame_pts['pos'] != []:
-                positive_points.extend([[pt.x(), pt.y()] for pt in frame_pts['pos']])
-            if frame_pts['neg'] != []:
-                negative_points.extend([[pt.x(), pt.y()] for pt in frame_pts['neg']])
-            if (frame_pts['pos'] != []) or (frame_pts['neg'] != []):
-                labels.extend(frame_pts['labels'])
-                select_frame = frame_id
-                # select_frame.extend([frame_id] * len(labels))
-
-        # print(positive_points, negative_points, labels, select_frame)
-
-        # frame_id = self.progress_slider.value()
-        # video_name = self.video_path
-
-        if self.process_single_frame.isChecked():
+        
+        if self.button_param_select.currentText() == 'Frame Mode':
             is_video = False
-        else:
+        elif self.button_param_select.currentText() == 'Video Mode':
             is_video = True
+        else:
+            raise ValueError('Please select the sam mode')
+
+        select_frame = self.progress_slider.value()
+        frame_pts = tracking_points[select_frame]
+        if frame_pts['raw_pos'] != []:
+            positive_points.extend([[pt.x(), pt.y()] for pt in frame_pts['raw_pos']])
+        if frame_pts['raw_neg'] != []:
+            negative_points.extend([[pt.x(), pt.y()] for pt in frame_pts['raw_neg']])
+        if (frame_pts['raw_pos'] != []) or (frame_pts['raw_neg'] != []):
+            labels.extend(frame_pts['labels'])
 
         self.sam_config['is_video'] = is_video
         self.sam_config['positive_points'] = positive_points
         self.sam_config['negative_points'] = negative_points
         self.sam_config['labels'] = labels
         self.sam_config['select_frame'] = select_frame
-
+    
+    def get_sam_result(self):
+        self.set_sam_config()   
         masks, mask_images = request_sam(self.sam_config)
-
         self.sam_res = mask_images
-
-    def get_tap_result(self):
-        tracking_points = self.tracking_points
-        # frame_id = self.progress_slider.value()
-        # video_name = self.video_path
-
-        tracking_points = self.tracking_points
-        points = []
-        negative_points = []
-        labels = []
-        select_frame = []
-        for frame_id, frame_pts in tracking_points.items():
-            if frame_pts['pos'] != []:
-                points.extend([[pt.x(), pt.y()] for pt in frame_pts['pos']])
-            if frame_pts['neg'] != []:
-                points.extend([[pt.x(), pt.y()] for pt in frame_pts['neg']])
-            if (frame_pts['pos'] != []) or (frame_pts['neg'] != []):
-                # labels.extend(frame_pts['labels'])
-                select_frame.extend([[frame_id]] * len(frame_pts['labels']))
         
-        self.co_tracker_config['points'] = points
-        # self.co_tracker_config['labels'] = labels
-        self.co_tracker_config['select_frame'] = select_frame
-        self.co_tracker_config['mode'] = 'point'
-
+        if self.sam_config['is_video']:
+            for i, mask in enumerate(masks):
+                self.tracking_masks[self.sam_config['select_frame'] + i] = mask
+        else:
+            self.tracking_masks[self.sam_config['select_frame']] = masks[0]
+        
+    def get_tap_result(self):        
+        self.co_tracker_config['mode'] = self.button_param_select.currentText()
+        
+        if self.co_tracker_config['mode'] == 'Point Mode':
+            points, select_frame = [], []
+            for frame_id, frame_pts in self.tracking_points.items():
+                if frame_pts['raw_pos'] != []:
+                    points.extend([[pt.x(), pt.y()] for pt in frame_pts['raw_pos']])
+                    select_frame.extend([[frame_id]] * len(frame_pts['labels']))
+            self.co_tracker_config['points'] = points
+            self.co_tracker_config['select_frame'] = select_frame
+            assert len(select_frame) == len(points)
+            self.co_tracker_config['mode'] = 'point' # TODO: add mode selection
+        
+        elif self.co_tracker_config['mode'] == 'Mask Mode':
+            self.set_sam_config()
+            self.co_tracker_config['select_frame'] = self.sam_config['select_frame']  
+        
+        elif self.co_tracker_config['mode'] == 'Grid Mode':
+            self.co_tracker_config['grid_size'] = 10
+        
+        else:
+            raise ValueError('Please select the tracker mode')
+        
         pred_tracks, pred_visibility, images = request_cotracker(self.sam_config, self.co_tracker_config)
-
         self.tracker_res = images
-
     
     def mousePressEvent(self, event: QMouseEvent):
         if self.last_frame is None:
@@ -524,10 +552,8 @@ class VideoPlayer(QWidget):
             if gt_pos is None:
                 return
             click_position = QPoint(gt_pos[0], gt_pos[1])
-            # self.pos_click_position.append(click_position)
-            print(f"Clicked Position: {click_position}")
-            # self.click_action.append(1)
-            
+            original_position = QPoint(int(gt_pos[0]//self.scale), int(gt_pos[1]//self.scale))            
+            self.tracking_points[self.progress_slider.value()]['raw_pos'].append(original_position)
             self.tracking_points[self.progress_slider.value()]['pos'].append(click_position)
             self.tracking_points[self.progress_slider.value()]['labels'].append(1)
             
@@ -538,10 +564,9 @@ class VideoPlayer(QWidget):
             if gt_pos is None:
                 return
             click_position = QPoint(gt_pos[0], gt_pos[1])
-            # self.neg_click_position.append(click_position)
-            print(f"Clicked Position: {click_position}")
-            # self.click_action.append(-1)
+            original_position = QPoint(int(gt_pos[0]//self.scale), int(gt_pos[1]//self.scale))     
             self.tracking_points[self.progress_slider.value()]['neg'].append(click_position)
+            self.tracking_points[self.progress_slider.value()]['raw_neg'].append(original_position)
             self.tracking_points[self.progress_slider.value()]['labels'].append(-1)
             
         self.draw_image()

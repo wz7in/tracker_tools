@@ -4,7 +4,7 @@ import requests, io, zipfile
 import cv2, torch
 from cotracker.utils.visualizer import Visualizer
 
-root_url = 'http://10.140.0.145:10086'
+root_url = 'http://10.140.1.33:10086'
 # root_url = 'http://127.0.0.1:10086'
 
 def request_sam(config):
@@ -46,28 +46,7 @@ def request_sam(config):
         return None, None
 
 def request_cotracker(sam_config, co_tracker_config):
-    url = f"{root_url}/predict_cotracker"
-
-    # add parameters here
-    sam_config["is_video"] = False
-    sam_config["positive_points"] = np.array(
-        [
-            [158, 23],
-            [158, 35],
-        ]
-    ).tolist()
-    sam_config["negative_points"] = np.array(
-        [
-            [170, 39],
-        ]
-    ).tolist()
-    sam_config["labels"] = np.array([1, 1, -1]).tolist()
-    # co_tracker_config["points"] = np.array(
-    #     [
-    #         [158, 23],
-    #         [158, 35],
-    #     ]
-    # ).tolist()
+    url = f"{root_url}/predict_cotracker"    
 
     model_config = {
         "sam": sam_config,
