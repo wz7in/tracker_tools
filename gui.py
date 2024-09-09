@@ -272,6 +272,8 @@ class VideoPlayer(QWidget):
         elif self.vis_tracker.isChecked():
             self.vis_track_res = True
             self.track_res = self.tracker_res
+        else:
+            self.vis_track_res = False
 
         frame_number = self.progress_slider.value()
         self.update_frame(frame_number)
