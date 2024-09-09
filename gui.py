@@ -10,7 +10,7 @@ from PyQt5.QtCore import Qt, QRect, QEvent, QPoint
 
 import yaml
 from client_utils import request_sam, request_cotracker
-from cotracker.utils.visualizer import Visualizer
+import numpy as np
 
 
 class VideoPlayer(QWidget):
@@ -276,8 +276,9 @@ class VideoPlayer(QWidget):
         self.sam_config = self.model_config["sam"]
         self.co_tracker_config = self.model_config["cotracker"]
 
-        # initialize self.vis_track_res
+        # initialize
         self.vis_track_res = False
+        self.sam_res = []
 
     def get_anno_result(self):
         if self.anno_function_select.currentText() == 'sam':
@@ -320,7 +321,7 @@ class VideoPlayer(QWidget):
 
     def load_clip_data(self):
         video_name = self.video_path.split('/')[-1].split('.')[0]
-        clip_data_pth = f'/Users/dingzihan/Documents/projects/tracker_tools/{video_name}.json'
+        clip_data_pth = f'./{video_name}.json'
         with open(clip_data_pth, 'r') as f:
             clip_data = json.load(f)
 
@@ -384,11 +385,16 @@ class VideoPlayer(QWidget):
         if video_path:
             self.cap = cv2.VideoCapture(video_path)
             self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.ori_video = []
             for i in range(self.frame_count):
                 self.tracking_points[i] = dict(
                     pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[]
                 )
                 self.tracking_masks[i] = []
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+                ret, frame = self.cap.read()
+                self.ori_video.append(frame)
+            self.ori_video = np.array(self.ori_video)
             self.progress_slider.setMaximum(self.frame_count - 1)
             self.update_frame(0)
             self.update_keyframe_bar()  # Initialize keyframe bar
@@ -508,7 +514,15 @@ class VideoPlayer(QWidget):
     def get_sam_result(self):
         self.set_sam_config()   
         masks, mask_images = request_sam(self.sam_config)
-        self.sam_res = mask_images
+        frame_id = self.sam_config['select_frame']
+        if mask_images.shape[0]==1:
+            if len(self.sam_res)!=0:
+                self.sam_res[frame_id] = mask_images[0,...]
+            else:
+                self.sam_res = self.ori_video.copy()
+                self.sam_res[frame_id] = mask_images[0,...]
+        else:
+            self.sam_res = mask_images
         
         if self.sam_config['is_video']:
             for i, mask in enumerate(masks):
@@ -528,7 +542,7 @@ class VideoPlayer(QWidget):
             self.co_tracker_config['points'] = points
             self.co_tracker_config['select_frame'] = select_frame
             assert len(select_frame) == len(points)
-            self.co_tracker_config['mode'] = 'point' # TODO: add mode selection
+            # self.co_tracker_config['mode'] = 'point' # TODO: add mode selection
         
         elif self.co_tracker_config['mode'] == 'Mask Mode':
             self.set_sam_config()

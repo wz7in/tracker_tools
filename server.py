@@ -25,6 +25,7 @@ def forward_sam(model_config):
     positive_points = np.array(model_config["positive_points"])
     negative_points = np.array(model_config["negative_points"])
     labels = np.array(model_config["labels"])
+    print(positive_points.shape, negative_points.shape, labels.shape)
     if len(negative_points) != 0:
         positive_points = np.concatenate([positive_points, negative_points], axis=0)
 
@@ -51,13 +52,14 @@ def forward_co_tracker(model_config):
     mode = model_config["cotracker"]["mode"]
     select_frame = model_config["cotracker"]["select_frame"]
     
+    print(video_path)
     video = read_video_from_path(video_path)
     video = torch.from_numpy(video).permute(0, 3, 1, 2).unsqueeze(0).float().to(device)
     
     global model_cotracker
     model_cotracker = model_cotracker.to(device)
     
-    if mode == "mask":
+    if mode == "Mask Mode":
         assert model_config["sam"]["is_video"] == False, "mask mode only support single frame"
         sample_points_number = model_config["cotracker"]["sample_points_number"]
         _, masks = forward_sam(model_config["sam"])
@@ -73,12 +75,13 @@ def forward_co_tracker(model_config):
         points = np.concatenate([np.array([[select_frame]] * points.shape[0]), points], axis=-1)
         points = torch.from_numpy(points).float().to(device)
         pred_tracks, pred_visibility = model_cotracker(video, queries=points[None], backward_tracking=True)
-    elif mode == "point":
+    elif mode == "Point Mode":
         points = np.array(model_config["cotracker"]["points"])
-        points = np.concatenate([np.array([[select_frame]] * points.shape[0]), points], axis=-1)
+        points = np.concatenate([np.array(select_frame), points], axis=-1)
+        # points = np.concatenate([np.array([[select_frame]] * points.shape[0]), points], axis=-1)
         points = torch.from_numpy(points).float().to(device)
         pred_tracks, pred_visibility = model_cotracker(video, queries=points[None], backward_tracking=True)
-    elif mode == "grid":
+    elif mode == "Grid Mode":
         grid_size = model_config["cotracker"]["grid_size"]
         pred_tracks, pred_visibility = model_cotracker(video, grid_size=grid_size, grid_query_frame=select_frame, backward_tracking=True)
     else: 
@@ -88,8 +91,6 @@ def forward_co_tracker(model_config):
     # save_dir, file_name = save_path.rsplit("/", 1)
     vis = Visualizer()
     res_video = vis.visualize(video=video, tracks=pred_tracks, visibility=pred_visibility, save_video=False)
-        
-    return pred_tracks, pred_visibility, res_video
 
 @app.route("/predict_sam", methods=["POST"])
 def predict_sam_video():
@@ -135,7 +136,7 @@ def predict_cotracker():
 
 if __name__ == "__main__":
 
-    with open("/mnt/petrelfs/wangziqin/project/tracker_tools/config/config.yaml") as f:
+    with open("./config/config.yaml") as f:
         model_config = yaml.load(f, Loader=yaml.FullLoader)
 
     sam_config = model_config["sam"]
