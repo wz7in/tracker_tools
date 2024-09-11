@@ -305,6 +305,21 @@ class VideoPlayer(QWidget):
         anno_button_layout.addWidget(self.button_param_select)
         anno_button_layout.addWidget(click_action_button)
         self.toolbar_layout.addLayout(anno_button_layout)
+
+
+        # edit mode layout
+        self.edit_button_layout = QHBoxLayout()
+
+        self.edit_button = QPushButton("Edit Track keypoints", self)
+        self.edit_button.clicked.connect(self.edit_track_pts)
+        self.edit_button_layout.addWidget(self.edit_button)
+
+        self.close_edit_button = QPushButton("Close and Save Edit", self)
+        self.close_edit_button.clicked.connect(self.close_edit)
+        self.edit_button_layout.addWidget(self.close_edit_button)
+
+        self.toolbar_layout.addLayout(self.edit_button_layout)
+
         
 
         # Add spacer to push the items to the top
@@ -341,6 +356,30 @@ class VideoPlayer(QWidget):
         self.cur_frame_idx = self.progress_slider.value()
         self.pre_f_button.setDisabled(True)
         self.next_f_button.setDisabled(True)
+        self.is_edit_mode = False
+
+    def on_button_toggled(self):
+        for button in self.edit_choice_button:
+            if button.isChecked():
+                return button.text()
+
+
+    def edit_track_pts(self):
+        tracked_points = self.anno[self.video_list[self.cur_video_idx-1]]['track'][0][0]
+        num_key_pts = tracked_points.shape[1]
+        self.edit_choice_button = []
+        for i in range(num_key_pts):
+            choice_button = QRadioButton(str(i))
+            self.edit_choice_button.append(choice_button)
+            self.edit_button_layout.addWidget(choice_button)
+
+        self.edit_track_res = self.anno[self.video_list[self.cur_video_idx-1]]['track'][0][0].copy()
+        self.is_edit_mode = True
+
+    def close_edit(self):
+        self.anno[self.video_list[self.cur_video_idx-1]]['track'][0][0] =  self.edit_track_res
+        self.is_edit_mode = False
+
 
     def next_video(self):
         if self.cur_video_idx < len(self.video_list):
@@ -699,6 +738,19 @@ class VideoPlayer(QWidget):
         self.anno[self.video_list[self.cur_video_idx-1]]['track'] = (pred_tracks, pred_visibility)
     
     def mousePressEvent(self, event: QMouseEvent):
+        if self.is_edit_mode:
+            pos = self.video_label.mapFromGlobal(event.globalPos())
+            gt_pos = self.get_align_point(pos.x(), pos.y())
+            self.cur_edit_click = np.array([int(gt_pos[0]), int(gt_pos[1])])
+            original_position = QPoint(int(gt_pos[0]//self.scale), int(gt_pos[1]//self.scale))
+
+            cur_frame = self.cur_frame_idx
+            cur_pt_id = int(self.on_button_toggled())
+            self.edit_track_res[cur_frame, cur_pt_id, :] = np.array([original_position.x(), original_position.y()])
+
+            self.draw_image()
+
+            return
         if self.last_frame is None:
             return
         if event.button() == Qt.LeftButton and self.last_frame is not None:
@@ -743,27 +795,34 @@ class VideoPlayer(QWidget):
      
     def draw_image(self):
         frame = self.last_frame.copy()
-        pos_click_position = self.tracking_points[self.progress_slider.value()]['pos']
-        neg_click_position = self.tracking_points[self.progress_slider.value()]['neg']
-
-        for point in pos_click_position:
-            x, y = point.x(), point.y()
+        if self.is_edit_mode:
+            x, y = int(self.cur_edit_click[0]), int(self.cur_edit_click[1])
             cv2.circle(frame, (x, y), 3, (0, 255, 0), -1, lineType=cv2.LINE_AA)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
-        
-        for point in neg_click_position:
-            x, y = point.x(), point.y()
-            cv2.circle(frame, (x, y), 3, (255, 0, 0), -1, lineType=cv2.LINE_AA)
-            height, width, channel = frame.shape
-            bytes_per_line = 3 * width
-            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
-        
-        if len(pos_click_position)==0 and len(neg_click_position)==0:
-            height, width, channel = frame.shape
-            bytes_per_line = 3 * width
-            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+        else:
+            pos_click_position = self.tracking_points[self.progress_slider.value()]['pos']
+            neg_click_position = self.tracking_points[self.progress_slider.value()]['neg']
+
+            for point in pos_click_position:
+                x, y = point.x(), point.y()
+                cv2.circle(frame, (x, y), 3, (0, 255, 0), -1, lineType=cv2.LINE_AA)
+                height, width, channel = frame.shape
+                bytes_per_line = 3 * width
+                q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            
+            for point in neg_click_position:
+                x, y = point.x(), point.y()
+                cv2.circle(frame, (x, y), 3, (255, 0, 0), -1, lineType=cv2.LINE_AA)
+                height, width, channel = frame.shape
+                bytes_per_line = 3 * width
+                q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            
+            if len(pos_click_position)==0 and len(neg_click_position)==0:
+                height, width, channel = frame.shape
+                bytes_per_line = 3 * width
+                q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
         
         self.video_label.setPixmap(QPixmap.fromImage(q_img))
 
