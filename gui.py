@@ -19,7 +19,7 @@ def load_anno_file(anno_file, out_file):
         video_list = f.readlines()
     
     if os.path.exists(out_file):
-        pickle.load(open(out_file, 'rb'))
+        anno = pickle.load(open(out_file, 'rb'))
     else:
         anno = {}
     
@@ -593,15 +593,13 @@ class VideoPlayer(QWidget):
         self.set_sam_config()   
         masks, mask_images = request_sam(self.sam_config)
         frame_id = self.sam_config['select_frame']
-        if mask_images.shape[0]==1:
-            if len(self.sam_res)!=0:
-                self.sam_res[frame_id] = cv2.cvtColor(mask_images[0,...], cv2.COLOR_BGR2RGB)
-            else:
-                self.sam_res = self.ori_video.copy()
-                self.sam_res[frame_id] = cv2.cvtColor(mask_images[0,...], cv2.COLOR_BGR2RGB)
+        mask_images = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])
+        if mask_images.shape[0] != self.frame_count:
+            if len(self.sam_res) == 0:
+                self.sam_res = self.ori_video.copy()    
+            self.sam_res[frame_id:frame_id+mask_images.shape[0]] = mask_images
         else:
-            # self.sam_res = mask_images
-            self.sam_res = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])
+            self.sam_res = mask_images
         
         if self.sam_config['is_video']:
             for i, mask in enumerate(masks):
