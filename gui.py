@@ -78,19 +78,31 @@ class VideoPlayer(QWidget):
         video_control_button_layout = QHBoxLayout()
         
         # Pre video button
-        self.pre_button = QPushButton("Pre Video", self)
+        self.pre_button = QPushButton("<<", self)
         self.pre_button.clicked.connect(self.pre_video)
         self.pre_button.setDisabled(True)
         video_control_button_layout.addWidget(self.pre_button)
+
+        # Pre Frame button
+        self.pre_f_button = QPushButton("<", self)
+        self.pre_f_button.clicked.connect(self.pre_frame)
+        self.pre_button.setDisabled(True)
+        video_control_button_layout.addWidget(self.pre_f_button)
+
         
         self.video_position_label = QLabel(self)
         self.video_position_label.setStyleSheet("background-color: gray;")
         self.video_position_label.setAlignment(Qt.AlignCenter)
-        self.video_position_label.setFixedSize(100, 20)
+        self.video_position_label.setFixedSize(200, 20)
         video_control_button_layout.addWidget(self.video_position_label)
+
+        # Next video button
+        self.next_f_button = QPushButton(">", self)
+        self.next_f_button.clicked.connect(self.next_frame)
+        video_control_button_layout.addWidget(self.next_f_button)
         
         # Next video button
-        self.next_button = QPushButton("Pre Video", self)
+        self.next_button = QPushButton(">>", self)
         self.next_button.clicked.connect(self.next_video)
         video_control_button_layout.addWidget(self.next_button)
         video_layout.addLayout(video_control_button_layout)
@@ -309,7 +321,8 @@ class VideoPlayer(QWidget):
         self.last_frame = None
         self.tracking_points = dict()
         self.tracking_masks = dict()
-        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}")
+        # self.video_position_label.setText(f"{self.cur_video_idx}/{len(self.video_list)}, -/-")
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}, Frame: -/-")
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.play_video)
@@ -325,6 +338,9 @@ class VideoPlayer(QWidget):
         self.vis_track_res = False
         self.sam_res = []
         self.video_cache = dict()
+        self.cur_frame_idx = self.progress_slider.value()
+        self.pre_f_button.setDisabled(True)
+        self.next_f_button.setDisabled(True)
 
     def next_video(self):
         if self.cur_video_idx < len(self.video_list):
@@ -332,7 +348,7 @@ class VideoPlayer(QWidget):
         if self.cur_video_idx == len(self.video_list):
             self.next_button.setDisabled(True)
         self.pre_button.setDisabled(False)
-        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}")
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}, Frame: -/-")
 
     def pre_video(self):
         if self.cur_video_idx > 1:
@@ -340,7 +356,30 @@ class VideoPlayer(QWidget):
         if self.cur_video_idx == 1:
             self.pre_button.setDisabled(True)
         self.next_button.setDisabled(False)
-        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}")
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}, Frame: -/-")
+
+    def next_frame(self):
+        if self.cur_frame_idx < self.frame_count:
+            self.cur_frame_idx += 1
+        if self.cur_frame_idx == self.frame_count-1:
+            self.next_f_button.setDisabled(True)
+        self.pre_f_button.setDisabled(False)
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}, Frame: {self.cur_frame_idx}/{self.frame_count}")
+
+        self.update_frame(self.cur_frame_idx)
+        self.progress_slider.setValue(self.cur_frame_idx)
+        
+
+    def pre_frame(self):
+        if self.cur_frame_idx >= 1:
+            self.cur_frame_idx -= 1
+        if self.cur_frame_idx == 0:
+            self.pre_f_button.setDisabled(True)
+        self.next_f_button.setDisabled(False)
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}, Fame: {self.cur_frame_idx}/{self.frame_count}")
+
+        self.update_frame(self.cur_frame_idx)
+        self.progress_slider.setValue(self.cur_frame_idx)
     
     def request_video(self):
         if self.video_list[self.cur_video_idx-1] in self.video_cache:
@@ -385,11 +424,17 @@ class VideoPlayer(QWidget):
         self.update_frame(frame_number)
 
     def clear_annotations(self):
-        self.tracking_points[self.progress_slider.value()]['pos'] = []
-        self.tracking_points[self.progress_slider.value()]['raw_pos'] = []
-        self.tracking_points[self.progress_slider.value()]['neg'] = []
-        self.tracking_points[self.progress_slider.value()]['raw_neg'] = []
-        self.tracking_points[self.progress_slider.value()]['labels'] = []
+        for k, _ in self.tracking_points.items():
+            self.tracking_points[k]['pos'] = []
+            self.tracking_points[k]['raw_pos'] = []
+            self.tracking_points[k]['neg'] = []
+            self.tracking_points[k]['raw_neg'] = []
+            self.tracking_points[k]['labels'] = []
+        # self.tracking_points[self.progress_slider.value()]['pos'] = []
+        # self.tracking_points[self.progress_slider.value()]['raw_pos'] = []
+        # self.tracking_points[self.progress_slider.value()]['neg'] = []
+        # self.tracking_points[self.progress_slider.value()]['raw_neg'] = []
+        # self.tracking_points[self.progress_slider.value()]['labels'] = []
         if self.last_frame is not None:
             self.draw_image()
 
@@ -471,6 +516,9 @@ class VideoPlayer(QWidget):
         self.frame_position_label.show()
         self.update_keyframe_bar()  # Initialize keyframe bar
 
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}, Frame: {self.cur_frame_idx}/{self.frame_count}")
+        self.pre_f_button.setDisabled(True)
+
         # video_name = self.video_path.split('/')[-1].split('.')[0]
         video_name = self.video_list[self.cur_video_idx-1]
         # print(video_name)
@@ -515,6 +563,15 @@ class VideoPlayer(QWidget):
     def seek_video(self):
         frame_number = self.progress_slider.value()
         self.update_frame(frame_number)
+        self.cur_frame_idx = self.progress_slider.value()
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}, Frame: {self.cur_frame_idx}/{self.frame_count}")
+
+        self.pre_f_button.setDisabled(False)
+        self.next_f_button.setDisabled(False)
+        if self.cur_frame_idx == 0:
+            self.pre_f_button.setDisabled(True)
+        if self.cur_frame_idx == self.frame_count-1:
+            self.next_f_button.setDisabled(True)
     
     def toggle_playback(self):
         # if self.cap is None:

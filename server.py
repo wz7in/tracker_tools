@@ -20,6 +20,9 @@ def forward_sam(model_config):
     if not is_video:
         video = video[select_frame : select_frame + 1]
         select_frame = 0
+    else:
+        video = video[select_frame:]
+        select_frame = 0
     save_multi_frames(video, temp_image_list_save_dir)
     # get positave points and negative points
     positive_points = np.array(model_config["positive_points"])
