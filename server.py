@@ -25,7 +25,7 @@ def forward_sam(model_config):
     positive_points = np.array(model_config["positive_points"])
     negative_points = np.array(model_config["negative_points"])
     labels = np.array(model_config["labels"])
-    print(positive_points.shape, negative_points.shape, labels.shape)
+
     if len(negative_points) != 0:
         positive_points = np.concatenate([positive_points, negative_points], axis=0)
 
@@ -89,8 +89,10 @@ def forward_co_tracker(model_config):
         
     # save_path = model_config.get("save_path")
     # save_dir, file_name = save_path.rsplit("/", 1)
-    vis = Visualizer()
+    vis = Visualizer(show_first_frame=0)
     res_video = vis.visualize(video=video, tracks=pred_tracks, visibility=pred_visibility, save_video=False)
+        
+    return pred_tracks, pred_visibility, res_video
 
 @app.route("/predict_sam", methods=["POST"])
 def predict_sam_video():
@@ -132,7 +134,25 @@ def predict_cotracker():
         as_attachment=True,
         download_name="arrays.zip",
     )
-      
+
+@app.route("/get_video", methods=["POST"])
+def get_video():
+    model_config = json.loads(request.data)
+    video_path = model_config["video_path"]
+    video = read_video_from_path(video_path)
+    zip_io = io.BytesIO()   
+    with zipfile.ZipFile(zip_io, "w") as zf:
+        with zf.open("video.npy", "w") as f:
+            np.save(f, video)
+    
+    zip_io.seek(0)
+    return send_file(
+        zip_io,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="video.zip",
+    )
+
 
 if __name__ == "__main__":
 
@@ -154,7 +174,7 @@ if __name__ == "__main__":
         checkpoint=co_tracker_config["cotracker_ckpt_path"]
     )
 
-    app.run(host="0.0.0.0", port=10086)
+    app.run(host="0.0.0.0", port=10087)
 
     # model_cotracker = CoTrackerPredictor(
     #     checkpoint='/mnt/petrelfs/wangziqin/project/tracker_tools/co-tracker/checkpoints/cotracker2.pth'
