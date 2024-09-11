@@ -4,7 +4,7 @@ import requests, io, zipfile
 import cv2, torch
 from cotracker.utils.visualizer import Visualizer
 
-root_url = 'http://10.140.0.145:10086'
+root_url = 'http://10.140.1.22:10087'
 # root_url = 'http://127.0.0.1:10086'
 
 def request_sam(config):
@@ -70,9 +70,25 @@ def request_cotracker(sam_config, co_tracker_config):
         print("Error:", response)
         return None, None, None
 
-    # for save
-    import ipdb; ipdb.set_trace()
-    Visualizer().save_video(torch.from_numpy(images), "demo")
+
+def request_video(video_path):
+    url = f"{root_url}/get_video"
+    # add parameters here
+    config = {
+        "video_path": video_path,
+    }
+    response = requests.post(
+        url, data=json.dumps(config), headers={"content-type": "application/json"}
+    )
+    if response.status_code == 200:
+        zip_io = io.BytesIO(response.content)
+        with zipfile.ZipFile(zip_io, "r") as zf:
+            with zf.open("video.npy") as f:
+                video = np.load(f)
+        return video
+    else:
+        print("Error:", response)
+        return None
 
 if __name__ == "__main__":
     config_path = "./config/config.yaml"

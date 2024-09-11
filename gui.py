@@ -1,6 +1,8 @@
 import sys
 import os
 import json
+import argparse
+import pickle
 from PyQt5.QtCore import QPoint, QTimer, Qt
 import cv2
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, 
@@ -9,12 +11,29 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
 from PyQt5.QtCore import Qt, QRect, QEvent, QPoint
 
 import yaml
-from client_utils import request_sam, request_cotracker
+from client_utils import request_sam, request_cotracker, request_video
 import numpy as np
 
+def load_anno_file(anno_file, out_file):
+    with open(anno_file, 'r') as f:
+        video_list = f.readlines()
+    
+    if os.path.exists(out_file):
+        pickle.load(open(out_file, 'rb'))
+    else:
+        anno = {}
+    
+    video_list = [line.strip() for line in video_list]
+    video_list = sorted([line for line in video_list if line not in anno])
+        
+    return video_list, anno
 
 class VideoPlayer(QWidget):
-    def __init__(self):
+    def __init__(self, args):
+        
+        # load video list
+        self.video_list, self.anno = load_anno_file(args.anno_file, args.out_file)
+        
         super().__init__()
         self.setWindowTitle("Video Player")
         
@@ -34,12 +53,14 @@ class VideoPlayer(QWidget):
         self.progress_slider = QSlider(self)
         self.progress_slider.setOrientation(Qt.Horizontal)  # Horizontal
         self.progress_slider.valueChanged.connect(self.seek_video)
+        self.progress_slider.hide()  # Hide initially
         video_layout.addWidget(self.progress_slider)
 
         # Keyframe indicator bar
         self.keyframe_bar = QLabel(self)
         self.keyframe_bar.setFixedHeight(20)  # Set the height of the keyframe bar
         self.keyframe_bar.setMouseTracking(True)
+        self.keyframe_bar.setAlignment(Qt.AlignCenter)  # Center the QLabel
         self.keyframe_bar.installEventFilter(self)  # Install event filter to handle mouse events
         video_layout.addWidget(self.keyframe_bar)
 
@@ -54,15 +75,37 @@ class VideoPlayer(QWidget):
         self.frame_position_label.setFixedSize(100, 20)
         self.frame_position_label.hide()  # Hide initially
         
+        video_control_button_layout = QHBoxLayout()
+        
+        # Pre video button
+        self.pre_button = QPushButton("Pre Video", self)
+        self.pre_button.clicked.connect(self.pre_video)
+        self.pre_button.setDisabled(True)
+        video_control_button_layout.addWidget(self.pre_button)
+        
+        self.video_position_label = QLabel(self)
+        self.video_position_label.setStyleSheet("background-color: gray;")
+        self.video_position_label.setAlignment(Qt.AlignCenter)
+        self.video_position_label.setFixedSize(100, 20)
+        video_control_button_layout.addWidget(self.video_position_label)
+        
+        # Next video button
+        self.next_button = QPushButton("Pre Video", self)
+        self.next_button.clicked.connect(self.next_video)
+        video_control_button_layout.addWidget(self.next_button)
+        video_layout.addLayout(video_control_button_layout)
+        
+        video_load_button_layout = QHBoxLayout()
         # Load video button
         self.load_button = QPushButton("Load Video", self)
         self.load_button.clicked.connect(self.load_video)
-        video_layout.addWidget(self.load_button)
-
+        video_load_button_layout.addWidget(self.load_button)
+        
         # Print frame position button
-        self.print_button = QPushButton("Print Frame Position", self)
-        self.print_button.clicked.connect(self.get_frame_position)
-        video_layout.addWidget(self.print_button)
+        self.save_button = QPushButton("Save Annotation Reults", self)
+        self.save_button.clicked.connect(self.save_result)
+        video_load_button_layout.addWidget(self.save_button)
+        video_layout.addLayout(video_load_button_layout)
         
         # Add video layout to the main layout
         main_layout.addLayout(video_layout)
@@ -260,11 +303,13 @@ class VideoPlayer(QWidget):
 
         self.setLayout(main_layout)
 
-        self.cap = None
+        # self.cap = None
+        self.cur_video_idx = 1
         self.frame_count = 0
         self.last_frame = None
         self.tracking_points = dict()
         self.tracking_masks = dict()
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}")
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.play_video)
@@ -279,7 +324,36 @@ class VideoPlayer(QWidget):
         # initialize
         self.vis_track_res = False
         self.sam_res = []
+        self.video_cache = dict()
 
+    def next_video(self):
+        if self.cur_video_idx < len(self.video_list):
+            self.cur_video_idx += 1
+        if self.cur_video_idx == len(self.video_list):
+            self.next_button.setDisabled(True)
+        self.pre_button.setDisabled(False)
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}")
+
+    def pre_video(self):
+        if self.cur_video_idx > 1:
+            self.cur_video_idx -= 1
+        if self.cur_video_idx == 1:
+            self.pre_button.setDisabled(True)
+        self.next_button.setDisabled(False)
+        self.video_position_label.setText(f"Video: {self.cur_video_idx}/{len(self.video_list)}")
+    
+    def request_video(self):
+        if self.video_list[self.cur_video_idx-1] in self.video_cache:
+            video = self.video_cache[self.cur_video_idx]
+        else:
+            video = request_video(self.video_list[self.cur_video_idx-1])
+            self.video_cache[self.cur_video_idx-1] = video
+        return video
+    
+    def save_result(self):
+        # json.dump(self.anno, open(args.out_file, 'w'))
+        pickle.dump(self.anno, open(args.out_file, 'wb'))
+    
     def get_anno_result(self):
         if self.anno_function_select.currentText() == 'sam':
             self.get_sam_result()
@@ -320,7 +394,7 @@ class VideoPlayer(QWidget):
             self.draw_image()
 
     def load_clip_data(self):
-        video_name = self.video_path.split('/')[-1].split('.')[0]
+        video_name = self.video_list[self.cur_video_idx-1].split('/')[-1].split('.')[0]
         clip_data_pth = f'./{video_name}.json'
         with open(clip_data_pth, 'r') as f:
             clip_data = json.load(f)
@@ -350,9 +424,9 @@ class VideoPlayer(QWidget):
                 self.des_choice_buttons.append(choice_button)
            
     def clear_video(self):
-        if self.cap is not None:
-            self.cap.release()
-        self.cap = None
+        # if self.cap is not None:
+        #     self.cap.release()
+        # self.cap = None
         self.video_label.clear()
         self.progress_slider.setValue(0)
         self.frame_position_label.hide()
@@ -380,67 +454,71 @@ class VideoPlayer(QWidget):
             self.draw_image()
     
     def load_video(self):
-        video_path, _ = QFileDialog.getOpenFileName(self, "Select a Video", "", "Video Files (*.mp4 *.avi *.mov)")
-        self.video_path = video_path
-        if video_path:
-            self.cap = cv2.VideoCapture(video_path)
-            self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.ori_video = []
-            for i in range(self.frame_count):
-                self.tracking_points[i] = dict(
-                    pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[]
-                )
-                self.tracking_masks[i] = []
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-                ret, frame = self.cap.read()
-                self.ori_video.append(frame)
-            self.ori_video = np.array(self.ori_video)
-            self.progress_slider.setMaximum(self.frame_count - 1)
-            self.update_frame(0)
-            self.update_keyframe_bar()  # Initialize keyframe bar
+        video = self.request_video()
+        self.sam_config['video_path'] = self.video_list[self.cur_video_idx-1]
+        self.co_tracker_config['video_path'] = self.video_list[self.cur_video_idx-1]
+        self.frame_count = video.shape[0]
+        self.ori_video = []
+        for i in range(self.frame_count):
+            self.tracking_points[i] = dict(
+                pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[]
+            )
+            self.tracking_masks[i] = []
+        self.ori_video = np.array(video)
+        self.progress_slider.setMaximum(self.frame_count - 1)
+        self.update_frame(0)
+        self.progress_slider.show()
+        self.frame_position_label.show()
+        self.update_keyframe_bar()  # Initialize keyframe bar
 
-        # check if clip prepocess info is exist, load automatically
-        video_name = self.video_path.split('/')[-1].split('.')[0]
-        clip_data_pth = f'/Users/dingzihan/Documents/projects/tracker_tools/{video_name}.json'
+        # video_name = self.video_path.split('/')[-1].split('.')[0]
+        video_name = self.video_list[self.cur_video_idx-1]
+        # print(video_name)
+        if video_name not in self.anno:
+            self.anno[video_name] = dict(
+                mask=[], track=[]
+            )
+        clip_data_pth = f'./{video_name}.json'
         if os.path.exists(clip_data_pth):
             self.load_clip_data()
             
     def update_frame(self, frame_number):
-        if self.cap is not None:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
-            ret, frame = self.cap.read()
-            if ret:
+        # if self.cap is not None:
+        #     self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+        #     ret, frame = self.cap.read()
+        #     if ret:
                 # Resize frame to fit the QLabel while keeping aspect ratio
-                if self.vis_track_res:
-                    frame = self.track_res[frame_number]
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                self.height, self.width, channel = frame.shape
+        frame = self.ori_video[frame_number]
+        if self.vis_track_res:
+            frame = self.track_res[frame_number]
+            # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        self.height, self.width, channel = frame.shape
 
-                # Scale the image to fit QLabel
-                label_width = self.video_label.width()
-                label_height = self.video_label.height()
-                self.scale_width = label_width / self.width
-                self.scale_height = label_height / self.height
-                self.scale = min(self.scale_width, self.scale_height)
-                new_width = int(self.width * self.scale)
-                new_height = int(self.height * self.scale)
+        # Scale the image to fit QLabel
+        label_width = self.video_label.width()
+        label_height = self.video_label.height()
+        self.scale_width = label_width / self.width
+        self.scale_height = label_height / self.height
+        self.scale = min(self.scale_width, self.scale_height)
+        new_width = int(self.width * self.scale)
+        new_height = int(self.height * self.scale)
 
-                resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
-                
-                # Update and reposition frame position label
-                self.update_frame_position_label()
+        resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
+        
+        # Update and reposition frame position label
+        self.update_frame_position_label()
 
-                self.last_frame = resized_frame
-                
-                self.draw_image()
+        self.last_frame = resized_frame
+        
+        self.draw_image()
                 
     def seek_video(self):
         frame_number = self.progress_slider.value()
         self.update_frame(frame_number)
     
     def toggle_playback(self):
-        if self.cap is None:
-            return
+        # if self.cap is None:
+        #     return
         if self.play_button.isChecked():
             self.play_button.setText("Stop Auto Play")
             self.current_frame = self.progress_slider.value()
@@ -472,15 +550,15 @@ class VideoPlayer(QWidget):
         return current_position
     
     def play_video(self):
-        if self.cap is not None:
-            if self.current_frame < self.frame_count - 1:
-                self.current_frame += 1
-                self.update_frame(self.current_frame)
-                self.progress_slider.setValue(self.current_frame)
-            else:
-                self.timer.stop()
-                self.play_button.setChecked(False)
-                self.play_button.setText("Auto Play")
+        # if self.cap is not None:
+        if self.current_frame < self.frame_count - 1:
+            self.current_frame += 1
+            self.update_frame(self.current_frame)
+            self.progress_slider.setValue(self.current_frame)
+        else:
+            self.timer.stop()
+            self.play_button.setChecked(False)
+            self.play_button.setText("Auto Play")
 
     def set_sam_config(self):
         
@@ -517,19 +595,26 @@ class VideoPlayer(QWidget):
         frame_id = self.sam_config['select_frame']
         if mask_images.shape[0]==1:
             if len(self.sam_res)!=0:
-                self.sam_res[frame_id] = mask_images[0,...]
+                self.sam_res[frame_id] = cv2.cvtColor(mask_images[0,...], cv2.COLOR_BGR2RGB)
             else:
                 self.sam_res = self.ori_video.copy()
-                self.sam_res[frame_id] = mask_images[0,...]
+                self.sam_res[frame_id] = cv2.cvtColor(mask_images[0,...], cv2.COLOR_BGR2RGB)
         else:
-            self.sam_res = mask_images
+            # self.sam_res = mask_images
+            self.sam_res = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])
         
         if self.sam_config['is_video']:
             for i, mask in enumerate(masks):
                 self.tracking_masks[self.sam_config['select_frame'] + i] = mask
+            self.anno[self.video_list[self.cur_video_idx-1]]['mask'] = masks
         else:
             self.tracking_masks[self.sam_config['select_frame']] = masks[0]
-        
+            if len(self.anno[self.video_list[self.cur_video_idx-1]]['mask']) > 0:
+                self.anno[self.video_list[self.cur_video_idx-1]]['mask'][frame_id] = masks[0]
+            else:
+                self.anno[self.video_list[self.cur_video_idx-1]]['mask'] = np.zeros((self.frame_count, *masks[0].shape))
+                self.anno[self.video_list[self.cur_video_idx-1]]['mask'][frame_id] = masks[0]
+                
     def get_tap_result(self):        
         self.co_tracker_config['mode'] = self.button_param_select.currentText()
         
@@ -538,7 +623,7 @@ class VideoPlayer(QWidget):
             for frame_id, frame_pts in self.tracking_points.items():
                 if frame_pts['raw_pos'] != []:
                     points.extend([[pt.x(), pt.y()] for pt in frame_pts['raw_pos']])
-                    select_frame.extend([[frame_id]] * len(frame_pts['labels']))
+                    select_frame.extend([[frame_id]] * len(frame_pts['raw_pos']))
             self.co_tracker_config['points'] = points
             self.co_tracker_config['select_frame'] = select_frame
             assert len(select_frame) == len(points)
@@ -555,7 +640,8 @@ class VideoPlayer(QWidget):
             raise ValueError('Please select the tracker mode')
         
         pred_tracks, pred_visibility, images = request_cotracker(self.sam_config, self.co_tracker_config)
-        self.tracker_res = images
+        self.tracker_res = np.array([cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images])
+        self.anno[self.video_list[self.cur_video_idx-1]]['track'] = (pred_tracks, pred_visibility)
     
     def mousePressEvent(self, event: QMouseEvent):
         if self.last_frame is None:
@@ -607,14 +693,14 @@ class VideoPlayer(QWidget):
 
         for point in pos_click_position:
             x, y = point.x(), point.y()
-            cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+            cv2.circle(frame, (x, y), 3, (0, 255, 0), -1, lineType=cv2.LINE_AA)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
         
         for point in neg_click_position:
             x, y = point.x(), point.y()
-            cv2.circle(frame, (x, y), 5, (255, 0, 0), -1)
+            cv2.circle(frame, (x, y), 3, (255, 0, 0), -1, lineType=cv2.LINE_AA)
             height, width, channel = frame.shape
             bytes_per_line = 3 * width
             q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
@@ -701,13 +787,20 @@ class VideoPlayer(QWidget):
                 return
 
     def closeEvent(self, event):
-        if self.cap is not None:
-            self.cap.release()
+        # if self.cap is not None:
+        #     self.cap.release()
         event.accept()
             
 if __name__ == "__main__":
+    
+    # load annotation file
+    args = argparse.ArgumentParser()
+    args.add_argument('--anno_file', type=str, default='./data/video_list.txt')
+    args.add_argument('--out_file', type=str, default='./data/annotation.json')
+    args = args.parse_args()
+    
     app = QApplication(sys.argv)
-    player = VideoPlayer()
+    player = VideoPlayer(args)
     player.resize(1000, 600)  # Adjusted size to accommodate the toolbar
     player.show()
     sys.exit(app.exec_())
