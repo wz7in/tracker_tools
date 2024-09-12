@@ -89,7 +89,6 @@ class VideoPlayer(QWidget):
         self.pre_button.setDisabled(True)
         video_control_button_layout.addWidget(self.pre_f_button)
 
-        
         self.video_position_label = QLabel(self)
         self.video_position_label.setStyleSheet("background-color: gray;")
         self.video_position_label.setAlignment(Qt.AlignCenter)
@@ -108,15 +107,25 @@ class VideoPlayer(QWidget):
         video_layout.addLayout(video_control_button_layout)
         
         video_load_button_layout = QHBoxLayout()
+        
         # Load video button
         self.load_button = QPushButton("Load Video", self)
         self.load_button.clicked.connect(self.load_video)
         video_load_button_layout.addWidget(self.load_button)
         
-        # Print frame position button
-        self.save_button = QPushButton("Save Annotation Reults", self)
-        self.save_button.clicked.connect(self.save_result)
-        video_load_button_layout.addWidget(self.save_button)
+        self.load_clip_data_button = QPushButton("Load Clip", self)
+        self.load_clip_data_button.clicked.connect(self.load_clip_data)
+        video_load_button_layout.addWidget(self.load_clip_data_button)
+        
+        self.play_button = QPushButton("Play", self)
+        self.play_button.setCheckable(True)
+        self.play_button.clicked.connect(self.toggle_playback)
+        video_load_button_layout.addWidget(self.play_button)
+        
+        self.remove_video_button = QPushButton("Remove Video", self)
+        self.remove_video_button.clicked.connect(self.clear_video)
+        video_load_button_layout.addWidget(self.remove_video_button)
+        
         video_layout.addLayout(video_load_button_layout)
         
         # Add video layout to the main layout
@@ -131,147 +140,7 @@ class VideoPlayer(QWidget):
         # Toolbar layout
         self.toolbar_layout = QVBoxLayout()
 
-        # Create a horizontal layout for the title and line
-        annotation_title_layout = QHBoxLayout()
-
-        # Add a label for the per-frame annotation title
-        annotation_title = QLabel("Control Tool Box", self)
-        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
-        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
-        annotation_title_layout.addWidget(annotation_title)
-
-        # Add a horizontal line to fill the remaining space
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("color: grey;")  # Set the same color as the title
-        annotation_title_layout.addWidget(line)
-
         # Add the horizontal layout to the toolbar layout
-        self.toolbar_layout.addLayout(annotation_title_layout)
-
-        # self.load_button = QPushButton("Load Video", self)
-        # self.load_button.clicked.connect(self.load_video)
-        # toolbar_layout.addWidget(self.load_button)
-        
-        # play_button
-        self.play_button = QPushButton("Auto Play", self)
-        self.play_button.setCheckable(True)
-        self.play_button.clicked.connect(self.toggle_playback)
-        self.toolbar_layout.addWidget(self.play_button)
-        
-        # clear_all_button
-        self.clear_all_button = QPushButton("Clear Annotations", self)
-        self.clear_all_button.clicked.connect(self.clear_annotations)
-        self.toolbar_layout.addWidget(self.clear_all_button)
-        
-        # remove_last_button
-        self.remove_last_button = QPushButton("Remove Last Annotation", self)
-        self.remove_last_button.clicked.connect(self.remove_last_annotation)
-        self.toolbar_layout.addWidget(self.remove_last_button)
-        
-        # remove_video_button
-        self.remove_video_button = QPushButton("Remove Video", self)
-        self.remove_video_button.clicked.connect(self.clear_video)
-        self.toolbar_layout.addWidget(self.remove_video_button)
-
-        # remove_video_button
-        self.load_clip_data_button = QPushButton("Load Clip Preprocess Data", self)
-        self.load_clip_data_button.clicked.connect(self.load_clip_data)
-        self.toolbar_layout.addWidget(self.load_clip_data_button)
-
-        # visualize layout
-        vis_button_layout = QHBoxLayout()
-
-        self.vis_button = QPushButton("Visualize Video", self)
-        self.vis_button.clicked.connect(self.load_res)
-        vis_button_layout.addWidget(self.vis_button)
-
-        self.vis_ori = QRadioButton("original video", self)
-        vis_button_layout.addWidget(self.vis_ori)
-
-        self.vis_sam = QRadioButton("sam result", self)
-        vis_button_layout.addWidget(self.vis_sam)
-
-        self.vis_tracker = QRadioButton("track result", self)
-        vis_button_layout.addWidget(self.vis_tracker)
-
-        self.toolbar_layout.addLayout(vis_button_layout)
-
-
-        # Create a horizontal layout for the title and line
-        annotation_title_layout = QHBoxLayout()
-
-        # Add a label for the per-frame annotation title
-        annotation_title = QLabel("Per Video Annotation", self)
-        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
-        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
-        annotation_title_layout.addWidget(annotation_title)
-
-        # Add a horizontal line to fill the remaining space
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("color: grey;")  # Set the same color as the title
-        annotation_title_layout.addWidget(line)
-
-        # Add the horizontal layout to the toolbar layout
-        self.toolbar_layout.addLayout(annotation_title_layout)
-        
-        # Language description input
-        self.description_input = QLineEdit(self)
-        self.description_input.setPlaceholderText("Enter description...")
-        self.toolbar_layout.addWidget(self.description_input)
-        
-        # Submit button for language description
-        self.submit_description_button = QPushButton("Submit Description", self)
-        self.submit_description_button.clicked.connect(self.submit_description)
-        self.toolbar_layout.addWidget(self.submit_description_button)
-
-        # Create a horizontal layout for the title and line
-        annotation_title_layout = QHBoxLayout()
-
-        # Add a label for the per-frame annotation title
-        annotation_title = QLabel("Per Frame Annotation", self)
-        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
-        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
-        annotation_title_layout.addWidget(annotation_title)
-
-        # Add a horizontal line to fill the remaining space
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("color: grey;")  # Set the same color as the title
-        annotation_title_layout.addWidget(line)
-
-        # Add the horizontal layout to the toolbar layout
-        self.toolbar_layout.addLayout(annotation_title_layout)
-
-        # Keyframe controls
-        keyframe_option_layout = QHBoxLayout()
-        self.keyframe_button_group = QButtonGroup(self)
-        self.start_button = QRadioButton("Start", self)
-        self.end_button = QRadioButton("End", self)
-        self.keyframe_button_group.addButton(self.start_button)
-        self.keyframe_button_group.addButton(self.end_button)
-        keyframe_option_layout.addWidget(self.start_button)
-        keyframe_option_layout.addWidget(self.end_button)
-        self.toolbar_layout.addLayout(keyframe_option_layout)
-
-        keyframe_button_layout = QHBoxLayout()
-        # Mark keyframe button
-        self.mark_keyframe_button = QPushButton("Mark Keyframe", self)
-        self.mark_keyframe_button.clicked.connect(self.mark_keyframe)
-        keyframe_button_layout.addWidget(self.mark_keyframe_button)
-        
-        # Remove keyframe button
-        self.remove_keyframe_button = QPushButton("Remove Keyframe", self)
-        self.remove_keyframe_button.clicked.connect(self.remove_keyframe)
-        keyframe_button_layout.addWidget(self.remove_keyframe_button)
-
-        # Add the horizontal layout to the toolbar layout
-        self.toolbar_layout.addLayout(keyframe_button_layout)
-
         function_title_layout = QHBoxLayout()
         function_title = QLabel("Auto Label Tools", self)
         function_title.setAlignment(Qt.AlignLeft)  # Left align the title
@@ -285,11 +154,10 @@ class VideoPlayer(QWidget):
         function_title_layout.addWidget(line)
         self.toolbar_layout.addLayout(function_title_layout)
         
-        # Anno buttons
         anno_button_layout = QHBoxLayout()
         self.anno_function_select = QComboBox()
-        self.anno_function_select.addItem('sam')
-        self.anno_function_select.addItem('tracker')
+        self.anno_function_select.addItem('Sam')
+        self.anno_function_select.addItem('Tracker')
         
         # button params for different functions
         self.button_param_select = QComboBox()
@@ -306,21 +174,169 @@ class VideoPlayer(QWidget):
         anno_button_layout.addWidget(click_action_button)
         self.toolbar_layout.addLayout(anno_button_layout)
 
+        
+        # Create a horizontal layout for the title and line
+        annotation_title_layout = QHBoxLayout()
+        annotation_title = QLabel("Visualization Annotation", self)
+        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+        annotation_title_layout.addWidget(annotation_title)
+        
+        line = QFrame(self)
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet("color: grey;")  # Set the same color as the title
+        annotation_title_layout.addWidget(line)
+        
+        self.toolbar_layout.addLayout(annotation_title_layout)
+        # visualize layout
+        vis_button_layout = QHBoxLayout()
+
+        self.vis_button = QPushButton("Visualize Video", self)
+        self.vis_button.clicked.connect(self.load_res)
+        vis_button_layout.addWidget(self.vis_button)
+
+        self.vis_ori = QRadioButton("original video", self)
+        vis_button_layout.addWidget(self.vis_ori)
+
+        self.vis_sam = QRadioButton("sam result", self)
+        vis_button_layout.addWidget(self.vis_sam)
+
+        self.vis_tracker = QRadioButton("track result", self)
+        vis_button_layout.addWidget(self.vis_tracker)
+        self.toolbar_layout.addLayout(vis_button_layout)
+
+        # Create a horizontal layout for the title and line
+        annotation_title_layout = QHBoxLayout()
+
+        # Add a label for the per-frame annotation title
+        annotation_title = QLabel("Language Annotation", self)
+        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+        annotation_title_layout.addWidget(annotation_title)
+
+        # Add a horizontal line to fill the remaining space
+        line = QFrame(self)
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet("color: grey;")  # Set the same color as the title
+        annotation_title_layout.addWidget(line)
+
+        # Add the horizontal layout to the toolbar layout
+        self.toolbar_layout.addLayout(annotation_title_layout)
+        
+        self.description_input = QLineEdit(self)
+        self.description_input.setPlaceholderText("Enter description...")
+        self.toolbar_layout.addWidget(self.description_input)
+       
+        # Language description input
+        self.desc_layout = QHBoxLayout()
+        self.description_mode = QComboBox(self)
+        self.description_mode.addItems(['Frame Mode','Video Mode'])
+        self.desc_layout.addWidget(self.description_mode)
+        
+        # Submit button for language description
+        self.submit_description_button = QPushButton("Submit Description", self)
+        self.submit_description_button.clicked.connect(self.submit_description)
+        self.desc_layout.addWidget(self.submit_description_button)
+        
+        self.toolbar_layout.addLayout(self.desc_layout)
+
+        # Create a horizontal layout for the title and line
+        annotation_title_layout = QHBoxLayout()
+
+        # Add a label for the per-frame annotation title
+        annotation_title = QLabel("Key Frame Annotation", self)
+        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+        annotation_title_layout.addWidget(annotation_title)
+
+        # Add a horizontal line to fill the remaining space
+        line = QFrame(self)
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet("color: grey;")  # Set the same color as the title
+        annotation_title_layout.addWidget(line)
+
+        # Add the horizontal layout to the toolbar layout
+        self.toolbar_layout.addLayout(annotation_title_layout)
+
+        # Keyframe controls
+        # keyframe_option_layout = QHBoxLayout()
+        # self.keyframe_button_group = QButtonGroup(self)
+        # self.start_button = QRadioButton("Start", self)
+        # self.end_button = QRadioButton("End", self)
+        # self.keyframe_button_group.addButton(self.start_button)
+        # self.keyframe_button_group.addButton(self.end_button)
+        # keyframe_option_layout.addWidget(self.start_button)
+        # keyframe_option_layout.addWidget(self.end_button)
+        # self.toolbar_layout.addLayout(keyframe_option_layout)
+
+        keyframe_button_layout = QHBoxLayout()
+        self.key_frame_selector = QComboBox()
+        self.key_frame_selector.addItems(['Start', 'End'])
+        keyframe_button_layout.addWidget(self.key_frame_selector)
+        
+        # Mark keyframe button
+        self.mark_keyframe_button = QPushButton("Mark Keyframe", self)
+        self.mark_keyframe_button.clicked.connect(self.mark_keyframe)
+        keyframe_button_layout.addWidget(self.mark_keyframe_button)
+        
+        # Remove keyframe button
+        self.remove_keyframe_button = QPushButton("Remove Keyframe", self)
+        self.remove_keyframe_button.clicked.connect(self.remove_keyframe)
+        keyframe_button_layout.addWidget(self.remove_keyframe_button)
+        self.toolbar_layout.addLayout(keyframe_button_layout)
 
         # edit mode layout
+        # Add a label for the per-frame annotation title
+        annotation_title_layout = QHBoxLayout()
+        annotation_title = QLabel("Edit Annotation", self)
+        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+        annotation_title_layout.addWidget(annotation_title)
+
+        # Add a horizontal line to fill the remaining space
+        line = QFrame(self)
+        line.setFrameShape(QFrame.HLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet("color: grey;")  # Set the same color as the title
+        annotation_title_layout.addWidget(line)
+
+        # Add the horizontal layout to the toolbar layout
+        self.toolbar_layout.addLayout(annotation_title_layout)
+        
+        self.control_button_layout = QHBoxLayout()
+        # clear_all_button
+        self.clear_all_button = QPushButton("Clear", self)
+        self.clear_all_button.clicked.connect(self.clear_annotations)
+        self.control_button_layout.addWidget(self.clear_all_button)
+        
+        # remove_last_button
+        self.remove_last_button = QPushButton("Remove Last", self)
+        self.remove_last_button.clicked.connect(self.remove_last_annotation)
+        self.control_button_layout.addWidget(self.remove_last_button)
+        
+        self.save_button = QPushButton("Save", self)
+        self.save_button.clicked.connect(self.save_result)
+        self.control_button_layout.addWidget(self.save_button)
+        
+        self.toolbar_layout.addLayout(self.control_button_layout)
         self.edit_button_layout = QHBoxLayout()
 
-        self.edit_button = QPushButton("Edit Track keypoints", self)
+        self.edit_button = QPushButton("Edit keypoints", self)
         self.edit_button.clicked.connect(self.edit_track_pts)
         self.edit_button_layout.addWidget(self.edit_button)
 
-        self.close_edit_button = QPushButton("Close and Save Edit", self)
+        self.close_edit_button = QPushButton("Save Edit", self)
         self.close_edit_button.clicked.connect(self.close_edit)
         self.edit_button_layout.addWidget(self.close_edit_button)
+        
+        self.track_point_selector = QComboBox()
+        self.track_point_selector.hide()
+        self.edit_button_layout.addWidget(self.track_point_selector)
 
         self.toolbar_layout.addLayout(self.edit_button_layout)
-
-        
 
         # Add spacer to push the items to the top
         self.toolbar_layout.addStretch()
@@ -358,27 +374,26 @@ class VideoPlayer(QWidget):
         self.next_f_button.setDisabled(True)
         self.is_edit_mode = False
 
-    def on_button_toggled(self):
-        for button in self.edit_choice_button:
-            if button.isChecked():
-                return button.text()
-
-
     def edit_track_pts(self):
         tracked_points = self.anno[self.video_list[self.cur_video_idx-1]]['track'][0][0]
         num_key_pts = tracked_points.shape[1]
-        self.edit_choice_button = []
+        # self.edit_choice_button = []
+        # for i in range(num_key_pts):
+        #     choice_button = QRadioButton(str(i))
+        #     self.edit_choice_button.append(choice_button)
+        #     self.toolbar_layout.addWidget(choice_button)
+        self.track_point_selector.show()
+        self.track_point_selector.clear()
         for i in range(num_key_pts):
-            choice_button = QRadioButton(str(i))
-            self.edit_choice_button.append(choice_button)
-            self.edit_button_layout.addWidget(choice_button)
-
+            self.track_point_selector.addItem(f"Point {i+1}")
+        
         self.edit_track_res = self.anno[self.video_list[self.cur_video_idx-1]]['track'][0][0].copy()
         self.is_edit_mode = True
 
     def close_edit(self):
         self.anno[self.video_list[self.cur_video_idx-1]]['track'][0][0] =  self.edit_track_res
         self.is_edit_mode = False
+        self.track_point_selector.hide()
 
 
     def next_video(self):
@@ -433,17 +448,17 @@ class VideoPlayer(QWidget):
         pickle.dump(self.anno, open(args.out_file, 'wb'))
     
     def get_anno_result(self):
-        if self.anno_function_select.currentText() == 'sam':
+        if self.anno_function_select.currentText() == 'Sam':
             self.get_sam_result()
-        elif self.anno_function_select.currentText() == 'tracker':
+        elif self.anno_function_select.currentText() == 'Tracker':
             self.get_tap_result()
     
     def update_function_select(self):
-        if self.anno_function_select.currentText() == 'sam':
+        if self.anno_function_select.currentText() == 'Sam':
             self.button_param_select.clear()
             self.button_param_select.addItem('Frame Mode')
             self.button_param_select.addItem('Video Mode')
-        elif self.anno_function_select.currentText() == 'tracker':
+        elif self.anno_function_select.currentText() == 'Tracker':
             self.button_param_select.clear()
             self.button_param_select.addItem('Point Mode')
             self.button_param_select.addItem('Mask Mode')
@@ -539,6 +554,8 @@ class VideoPlayer(QWidget):
     
     def load_video(self):
         video = self.request_video()
+        if video is None:
+            return
         self.sam_config['video_path'] = self.video_list[self.cur_video_idx-1]
         self.co_tracker_config['video_path'] = self.video_list[self.cur_video_idx-1]
         self.frame_count = video.shape[0]
@@ -616,11 +633,11 @@ class VideoPlayer(QWidget):
         # if self.cap is None:
         #     return
         if self.play_button.isChecked():
-            self.play_button.setText("Stop Auto Play")
+            self.play_button.setText("Stop")
             self.current_frame = self.progress_slider.value()
             self.timer.start(30)  # Set timer to update frame every 30 ms
         else:
-            self.play_button.setText("Auto Play")
+            self.play_button.setText("Play")
             self.timer.stop()
 
     def update_frame_position_label(self):
@@ -654,7 +671,7 @@ class VideoPlayer(QWidget):
         else:
             self.timer.stop()
             self.play_button.setChecked(False)
-            self.play_button.setText("Auto Play")
+            self.play_button.setText("Play")
 
     def set_sam_config(self):
         
@@ -745,7 +762,7 @@ class VideoPlayer(QWidget):
             original_position = QPoint(int(gt_pos[0]//self.scale), int(gt_pos[1]//self.scale))
 
             cur_frame = self.cur_frame_idx
-            cur_pt_id = int(self.on_button_toggled())
+            cur_pt_id = int(self.track_point_selector.currentText().split(' ')[-1]) - 1
             self.edit_track_res[cur_frame, cur_pt_id, :] = np.array([original_position.x(), original_position.y()])
 
             self.draw_image()
@@ -834,9 +851,9 @@ class VideoPlayer(QWidget):
 
     def mark_keyframe(self):
         current_frame = self.progress_slider.value()
-        if self.start_button.isChecked():
+        if self.key_frame_selector.currentText() == 'Start':
             self.keyframes[current_frame] = 'start'
-        elif self.end_button.isChecked():
+        elif self.key_frame_selector.currentText() == 'End':
             self.keyframes[current_frame] = 'end'
         self.update_keyframe_bar()
 

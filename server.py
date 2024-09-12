@@ -15,7 +15,7 @@ def forward_sam(model_config):
     is_video = model_config["is_video"]
     select_frame = model_config["select_frame"]
 
-    temp_image_list_save_dir = video_path.rsplit(".", 1)[0]
+    temp_image_list_save_dir = video_path.rsplit(".", 1)[0].replace("lihao3", "_")
     video = extract_frames(video_path)
     if not is_video:
         video = video[select_frame : select_frame + 1]
@@ -55,7 +55,6 @@ def forward_co_tracker(model_config):
     mode = model_config["cotracker"]["mode"]
     select_frame = model_config["cotracker"]["select_frame"]
     
-    print(video_path)
     video = read_video_from_path(video_path)
     video = torch.from_numpy(video).permute(0, 3, 1, 2).unsqueeze(0).float().to(device)
     
@@ -78,15 +77,35 @@ def forward_co_tracker(model_config):
         points = np.concatenate([np.array([[select_frame]] * points.shape[0]), points], axis=-1)
         points = torch.from_numpy(points).float().to(device)
         pred_tracks, pred_visibility = model_cotracker(video, queries=points[None], backward_tracking=True)
+    
     elif mode == "Point Mode":
         points = np.array(model_config["cotracker"]["points"])
         points = np.concatenate([np.array(select_frame), points], axis=-1)
         # points = np.concatenate([np.array([[select_frame]] * points.shape[0]), points], axis=-1)
         points = torch.from_numpy(points).float().to(device)
-        pred_tracks, pred_visibility = model_cotracker(video, queries=points[None], backward_tracking=True)
+        final_pred_tracks, final_pred_visibility = [], []
+        # max 100 frames per time
+        curr_frame = 100
+        while curr_frame < video[0].shape[0]:
+            pred_tracks, pred_visibility = model_cotracker(video[:, curr_frame-100:curr_frame], queries=points[None], backward_tracking=True if curr_frame == 100 else False)
+            final_pred_tracks.append(pred_tracks)
+            final_pred_visibility.append(pred_visibility)
+            points = pred_tracks[0, -1, :, ].cpu().numpy()
+            points = np.concatenate([np.zeros((points.shape[0], 1)), points], axis=-1)
+            points = torch.from_numpy(points).float().to(device)
+            curr_frame += 99
+        
+        pred_tracks, pred_visibility = model_cotracker(video[:, curr_frame-100:], queries=points[None], backward_tracking=True if curr_frame == 100 else False)
+        
+        final_pred_tracks.append(pred_tracks)
+        final_pred_visibility.append(pred_visibility)
+        pred_tracks = torch.cat(final_pred_tracks, dim=1)
+        pred_visibility = torch.cat(final_pred_visibility, dim=1)
+                    
     elif mode == "Grid Mode":
         grid_size = model_config["cotracker"]["grid_size"]
         pred_tracks, pred_visibility = model_cotracker(video, grid_size=grid_size, grid_query_frame=select_frame, backward_tracking=True)
+    
     else: 
         raise ValueError("mode should be mask or point")
         
