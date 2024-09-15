@@ -21,33 +21,34 @@ def forward_sam(model_config):
         video = video[select_frame : select_frame + 1]
         select_frame = 0
     else:
-        video = video[select_frame:]
+        video = video[select_frame : ]
         select_frame = 0
-    save_multi_frames(video, temp_image_list_save_dir)
-    # get positave points and negative points
-    positive_points = np.array(model_config["positive_points"])
-    negative_points = np.array(model_config["negative_points"])
-    labels = np.array(model_config["labels"])
-
-    if len(negative_points) != 0:
-        positive_points = np.concatenate([positive_points, negative_points], axis=0)
-
-    frame_length = len(os.listdir(temp_image_list_save_dir))
-    sam_start_time = time.time()
     
+    save_multi_frames(video, temp_image_list_save_dir)
+    positive_points_dict = model_config["positive_points"]
+    negative_points_dict = model_config["negative_points"]
+    labels_dict = model_config["labels"]
+    
+    mask_all = []
     global model_sam
-    masks = model_sam(temp_image_list_save_dir, positive_points, labels, select_frame)
-    sam_end_time = time.time()
-    print(
-        f"SAM processing {frame_length} frames in {sam_end_time-sam_start_time} s. {(sam_end_time-sam_start_time)/frame_length} s per frame."
-    )
+    model_sam.set_video_path(temp_image_list_save_dir)
+    for obj_idx in positive_points_dict.keys():
+        positive_points = np.array(positive_points_dict[obj_idx])
+        negative_points = np.array(negative_points_dict[obj_idx])
+        labels = np.array(labels_dict[obj_idx])
 
-    mask_images, masks = model_sam.get_mask_on_image(
-        masks, video, save_path=model_config["save_path"]
+        if len(negative_points) != 0:
+            positive_points = np.concatenate([positive_points, negative_points], axis=0)
+    
+        masks = model_sam(positive_points, labels, select_frame, obj_idx)
+        mask_all.append(masks)
+    
+    mask_images = model_sam.get_mask_on_image(
+        mask_all, video, save_path=model_config["save_path"]
     )
     os.system(f"rm -rf {temp_image_list_save_dir}")
     
-    return mask_images, masks
+    return mask_images, mask_all
 
 def forward_co_tracker(model_config):
     video_path = model_config["cotracker"]["video_path"]
@@ -109,8 +110,6 @@ def forward_co_tracker(model_config):
     else: 
         raise ValueError("mode should be mask or point")
         
-    # save_path = model_config.get("save_path")
-    # save_dir, file_name = save_path.rsplit("/", 1)
     vis = Visualizer(show_first_frame=0)
     res_video = vis.visualize(video=video, tracks=pred_tracks, visibility=pred_visibility, save_video=False)
         
