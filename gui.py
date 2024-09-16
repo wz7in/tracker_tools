@@ -5,7 +5,7 @@ import argparse
 import pickle
 from PyQt5.QtCore import QPoint, QTimer, Qt
 import cv2
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QMessageBox, QLineEdit, QDialogButtonBox, QTextEdit,
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QMessageBox, QLineEdit, QDialogButtonBox, QTextEdit, QGridLayout,
                              QLabel, QSlider, QDialog, QHBoxLayout, QFrame, QProgressDialog, QRadioButton, QToolTip, QComboBox)
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent, QBrush
 from PyQt5.QtCore import Qt, QRect, QEvent, QPoint, QSize, pyqtSignal, QThread
@@ -30,27 +30,48 @@ def load_anno_file(anno_file, out_file):
     return video_list, anno
 
 class TextInputDialog(QDialog):
-    def __init__(self, initial_text='', parent=None):
+    
+    def __init__(self, initial_text='', parent=None, is_video=True):
         super().__init__(parent)
         self.setWindowTitle('请输入语言标注')
+        self.is_video = is_video
         
-        self.layout = QVBoxLayout(self)
+        self.main_layout = QGridLayout(self)
         
-        self.label = QLabel('请输入语言标注:')
-        self.layout.addWidget(self.label)
-        
+        self.text_title = QLabel('请输入语言标注:', self) 
         self.text_input = QLineEdit(self)
-        self.text_input.setText(initial_text)
-        self.layout.addWidget(self.text_input)
+        self.text_input.setFixedSize(300,20)
         
+        self.prim_title = QLabel('请选择操作类型:', self)
+        self.mode_select = QComboBox()
+        self.mode_select.addItems(['Open', 'Close', 'Move'])
+        
+        self.text_input.setText(initial_text)
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
-        self.layout.addWidget(self.button_box)
+        
+        if not is_video:
+            self.main_layout.addWidget(self.prim_title, 1, 0)
+            self.main_layout.addWidget(self.mode_select, 1, 1)
+            self.main_layout.addWidget(self.text_title, 0, 0)
+            self.main_layout.addWidget(self.text_input, 0, 1)
+            self.main_layout.addWidget(self.button_box, 2, 0, 1, 2)
+        else:
+            self.main_layout.addWidget(self.text_title, 0, 0)
+            self.main_layout.addWidget(self.text_input, 0, 1)
+            self.main_layout.addWidget(self.button_box, 1, 0, 1, 2)
+        
         
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
-    
+        
     def get_text(self):
         return self.text_input.text()
+    
+    def get_prim(self):
+        if not self.is_video:
+            return self.mode_select.currentText()
+        else:
+            return ''
 
 
 class VideoPlayer(QWidget):
@@ -61,8 +82,6 @@ class VideoPlayer(QWidget):
         
         super().__init__()
         self.setWindowTitle("浦器实验室视频标注工具")
-        # 设置背景图片, 并设置模糊度，不许重复
-
         
         # Main layout to contain both video display and the toolbar
         main_layout = QHBoxLayout()
@@ -97,7 +116,7 @@ class VideoPlayer(QWidget):
         
         # Dynamic frame position label that floats above the slider
         self.frame_position_label = QLabel(self)
-        self.frame_position_label.setStyleSheet("background-color: gray;")
+        self.frame_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.frame_position_label.setAlignment(Qt.AlignCenter)
         self.frame_position_label.setFixedSize(100, 20)
         self.frame_position_label.hide()  # Hide initially
@@ -116,7 +135,7 @@ class VideoPlayer(QWidget):
         video_control_button_layout.addWidget(self.pre_f_button)
 
         self.video_position_label = QLabel(self)
-        self.video_position_label.setStyleSheet("background-color: gray;")
+        self.video_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.video_position_label.setAlignment(Qt.AlignCenter)
         self.video_position_label.setFixedSize(200, 20)
         video_control_button_layout.addWidget(self.video_position_label)
@@ -207,7 +226,7 @@ class VideoPlayer(QWidget):
         self.sam_pre_button.setDisabled(True)
         
         self.sam_obj_pos_label = QLabel(self)
-        self.sam_obj_pos_label.setStyleSheet("background-color: gray;")
+        self.sam_obj_pos_label.setStyleSheet("background-color: #E3E3E3;")
         self.sam_obj_pos_label.setAlignment(Qt.AlignCenter)
         self.sam_obj_pos_label.setFixedSize(150, 20)
         
@@ -302,41 +321,6 @@ class VideoPlayer(QWidget):
         
         self.toolbar_layout.addLayout(self.desc_layout)
 
-        # Create a horizontal layout for the title and line
-        # annotation_title_layout = QHBoxLayout()
-
-        # # Add a label for the per-frame annotation title
-        # annotation_title = QLabel("Key Frame Annotation Tips:", self)
-        # annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
-        # annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
-        # annotation_title_layout.addWidget(annotation_title)
-
-        # # Add a horizontal line to fill the remaining space
-        # line = QFrame(self)
-        # line.setFrameShape(QFrame.HLine)
-        # line.setFrameShadow(QFrame.Sunken)
-        # line.setStyleSheet("color: grey;")  # Set the same color as the title
-        # annotation_title_layout.addWidget(line)
-
-        # Add the horizontal layout to the toolbar layout
-        # self.toolbar_layout.addLayout(annotation_title_layout)
-
-        # keyframe_button_layout = QHBoxLayout()
-        # self.key_frame_selector = QComboBox()
-        # self.key_frame_selector.addItems(['Start', 'End'])
-        # keyframe_button_layout.addWidget(self.key_frame_selector)
-        
-        # Mark keyframe button
-        # self.mark_keyframe_button = QPushButton("Mark Keyframe", self)
-        # self.mark_keyframe_button.clicked.connect(self.mark_keyframe)
-        # keyframe_button_layout.addWidget(self.mark_keyframe_button)
-        
-        # # Remove keyframe button
-        # self.remove_keyframe_button = QPushButton("Remove Keyframe", self)
-        # self.remove_keyframe_button.clicked.connect(self.remove_keyframe)
-        # keyframe_button_layout.addWidget(self.remove_keyframe_button)
-        # self.toolbar_layout.addLayout(keyframe_button_layout)
-
         # edit mode layout
         annotation_title_layout = QHBoxLayout()
         annotation_title = QLabel("Edit Annotation", self)
@@ -356,7 +340,7 @@ class VideoPlayer(QWidget):
         
         self.control_button_layout = QHBoxLayout()
         # clear_all_button
-        self.clear_all_button = QPushButton("Clear", self)
+        self.clear_all_button = QPushButton("Clear All", self)
         self.clear_all_button.clicked.connect(self.clear_annotations)
         self.control_button_layout.addWidget(self.clear_all_button)
         
@@ -395,7 +379,8 @@ class VideoPlayer(QWidget):
         # Add a text edit to show the language annotation
         self.video_lang_input = QTextEdit(self)
         self.video_lang_input.setReadOnly(True)
-        self.video_lang_input.setFixedHeight(30)
+        self.video_lang_input.setFixedHeight(60)
+        self.video_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
         lang_layout.addWidget(self.video_lang_input)
         self.toolbar_layout.addLayout(lang_layout)
         
@@ -416,7 +401,8 @@ class VideoPlayer(QWidget):
         # Add a text edit to show the language annotation
         self.clip_lang_input = QTextEdit(self)
         self.clip_lang_input.setReadOnly(True)
-        self.clip_lang_input.setFixedHeight(30)
+        self.clip_lang_input.setFixedHeight(80)
+        self.clip_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
         lang_layout.addWidget(self.clip_lang_input)
         self.toolbar_layout.addLayout(lang_layout)
         
@@ -437,9 +423,10 @@ class VideoPlayer(QWidget):
         
         self.tips_input = QTextEdit(self)
         self.tips_input.setText(
-            "Q:\tStart Key Frame \tENTER:\tAdd/Motify Language\nE:\tEnd Key Frame \tBACK:\tDelete Key Frame \nA:\tPre Frame \nD:\tNext Frame")
+            "KEY_Q:\tStart Key Frame\tKEY_ENTE:\tAdd Language\nKEY_E:\tEnd Key Frame\tKEY_BACK:\tDelete Key Frame\nKEY_A:\tPre Frame\nKEY_D:\tNext Frame")
         self.tips_input.setReadOnly(True)
-        self.tips_input.setFixedHeight(90)
+        self.tips_input.setFixedHeight(75)
+        self.tips_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
         self.tips_layout.addWidget(self.tips_input)
         self.toolbar_layout.addLayout(self.tips_layout)
         
@@ -499,8 +486,12 @@ class VideoPlayer(QWidget):
         
         self.setAutoFillBackground(False)
         palette = self.palette()
-        palette.setBrush(self.backgroundRole(), QBrush(QPixmap('./demo/bg.png').scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)))
+        palette.setBrush(self.backgroundRole(), QBrush(QPixmap('./assert/bg.png').scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)))
         self.setPalette(palette)
+        if len(self.ori_video) > 0:
+            self.keyframe_bar.show()
+        else:
+            self.keyframe_bar.hide()
     
     def next_sam_object(self):
         
@@ -545,6 +536,8 @@ class VideoPlayer(QWidget):
             self.next_button.setDisabled(True)
         self.pre_button.setDisabled(False)
         self.video_position_label.setText(f"Frame: -/- | Video: {self.cur_video_idx}/{len(self.video_list)}")
+        self.clear_video()
+        self.clear_annotations()
 
     def pre_video(self):
         if self.cur_video_idx > 1:
@@ -576,9 +569,11 @@ class VideoPlayer(QWidget):
         if (0, 0) in self.lang_anno:
             self.video_lang_input.setText(self.lang_anno[(0, 0)])
         
-        anno_loc, clip_text = self.get_clip_description()
+        anno_loc, (clip_text, prim) = self.get_clip_description()
         if anno_loc is not None:
-            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]} | Description: {clip_text}")
+            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]}\nPrim: {prim}\nDescription: {clip_text}")
+        else:
+            self.clip_lang_input.setText('')
         
     def pre_frame(self):
         if self.cur_frame_idx >= 1:
@@ -603,15 +598,24 @@ class VideoPlayer(QWidget):
         if (0, 0) in self.lang_anno:
             self.video_lang_input.setText(self.lang_anno[(0, 0)])
         
-        anno_loc, clip_text = self.get_clip_description()
+        anno_loc, (clip_text, prim) = self.get_clip_description()
         if anno_loc is not None:
-            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]} | Description: {clip_text}")    
+            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]}\nPrim: {prim}\nDescription: {clip_text}")
+        else:
+            self.clip_lang_input.setText('') 
     
     def request_video(self):
         if self.video_list[self.cur_video_idx-1] in self.video_cache:
             video = self.video_cache[self.cur_video_idx]
         else:
-            video = request_video(self.video_list[self.cur_video_idx-1])
+            try:
+                video = request_video(self.video_list[self.cur_video_idx-1])
+            except Exception as e:
+                QMessageBox.warning(self, "Error", "视频加载失败，请检查网络设置")
+                return None
+            if video is None:
+                QMessageBox.warning(self, "Error", "视频加载失败，请检查网络设置")
+                return None
             self.video_cache[self.cur_video_idx-1] = video
         return video
     
@@ -788,6 +792,7 @@ class VideoPlayer(QWidget):
         self.keyframes = {}
         self.selected_keyframe = None
         self.update_keyframe_bar()
+        self.keyframe_bar.hide()
         self.tracking_points_sam = dict()
         self.tracking_points_tap = dict()
         self.tracking_masks = dict()
@@ -874,6 +879,7 @@ class VideoPlayer(QWidget):
         self.progress_slider.show()
         self.frame_position_label.show()
         self.update_keyframe_bar()  # Initialize keyframe bar
+        self.keyframe_bar.show()
         self.video_position_label.setText(f"Frame: {self.cur_frame_idx}/{self.frame_count} | Video: {self.cur_video_idx}/{len(self.video_list)}")
         self.pre_f_button.setDisabled(True)
         self.sam_obj_pos_label.setText("Annotation Object: 1/1")
@@ -937,9 +943,11 @@ class VideoPlayer(QWidget):
         if (0, 0) in self.lang_anno:
             self.video_lang_input.setText(self.lang_anno[(0, 0)])
         
-        anno_loc, clip_text = self.get_clip_description()
+        anno_loc, (clip_text, prim) = self.get_clip_description()
         if anno_loc is not None:
-            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]} | Description: {clip_text}")
+            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]}\nPrim: {prim}\nDescription: {clip_text}")
+        else:
+            self.clip_lang_input.clear()
             
     def toggle_playback(self):
         # if self.cap is None:
@@ -1076,6 +1084,8 @@ class VideoPlayer(QWidget):
             return -1
         
         masks, mask_images = request_sam(self.sam_config)
+        if masks is None:
+            return -1
         
         frame_id = self.sam_config['select_frame']
         mask_images = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])
@@ -1383,23 +1393,24 @@ class VideoPlayer(QWidget):
             return
 
         # load the cached description
-        anno_loc = [i for i in key_pairs if i[0] < frame_number <= i[1]]
+        anno_loc = [i for i in key_pairs if i[0] <= frame_number <= i[1]]
         if len(anno_loc) == 0:
             self.smart_message('请移动到所在区域的起止帧之间')
             return
         anno_loc = anno_loc[0]
         
         if self.lang_anno[anno_loc] is not None:
-            cached_lang = self.lang_anno[anno_loc]
+            cached_lang, prim = self.lang_anno[anno_loc]
         else:
-            cached_lang = ''
+            cached_lang, prim = '', ''
         # Create a dialog to get the description from the user
-        dialog = TextInputDialog(cached_lang, self)
+        dialog = TextInputDialog(cached_lang, self, False)
         if dialog.exec_() == QDialog.Accepted:
             cached_lang = dialog.get_text()
+            prim = dialog.get_prim()
             print(cached_lang)
-            self.lang_anno[anno_loc] = cached_lang
-            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]} | Description: {cached_lang}")
+            self.lang_anno[anno_loc] = (cached_lang, prim)
+            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]}\nPrim: {prim}\nDescription: {cached_lang}")
         else:
             return 
         
@@ -1422,13 +1433,12 @@ class VideoPlayer(QWidget):
         # Get the description for the clip
         key_pairs = list(self.lang_anno.keys())
         frame_number = self.progress_slider.value()
-        anno_loc = [i for i in key_pairs if i[0] < frame_number <= i[1]]
+        anno_loc = [i for i in key_pairs if i[0] <= frame_number <= i[1]]
         if len(anno_loc) > 0:
             return anno_loc[0], self.lang_anno[anno_loc[0]]
-        return None, None
+        return None, (None, None)
 
             
-
 
 if __name__ == "__main__":
     
@@ -1440,6 +1450,6 @@ if __name__ == "__main__":
     
     app = QApplication(sys.argv)
     player = VideoPlayer(args)
-    player.resize(1000, 600)  # Adjusted size to accommodate the toolbar
+    player.resize(1150, 600)  # Adjusted size to accommodate the toolbar
     player.show()
     sys.exit(app.exec_())

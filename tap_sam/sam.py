@@ -21,6 +21,7 @@ class Sam:
         self.predictor = build_sam2_video_predictor(
             self.model_cfg, self.sam2_checkpoint, device
         )
+        self.text_padding = 10
 
     def get_mask_on_image(
         self, masks_list, video, obj_id=None, random_color=True, save_path=None
@@ -54,7 +55,7 @@ class Sam:
                 save_path, cv2.VideoWriter_fourcc(*"MJPG"), 10, (width, height)
             )
             
-        text_scale = width / 550
+        text_scale = width / 800
         assert video.shape[0] == mask_image[0].shape[0]
         for i in range(video.shape[0]):      
             for obj_id in range(len(masks_list)):
@@ -62,8 +63,20 @@ class Sam:
                 mix_image = np.where(mix_mask, mask_image[obj_id][i], video[i]) if obj_id == 0 else np.where(mix_mask, mask_image[obj_id][i], mix_image)
                 # write number on the mask in the image by cv2
                 loc = np.where(mix_mask[:,:,0])
+                if len(loc[0]) == 0:
+                    continue
                 loc = (np.mean(loc[0]).astype(int), np.mean(loc[1]).astype(int))
-                cv2.putText(mix_image, str(obj_id+1), (loc[1], loc[0]), cv2.FONT_HERSHEY_SIMPLEX, text_scale, (255, 255, 255), 2, cv2.LINE_AA)
+                
+                if loc[0] < self.text_padding:
+                    loc = (self.text_padding, loc[1])
+                if loc[1] < self.text_padding:
+                    loc = (loc[0], self.text_padding)
+                if loc[0] > height - self.text_padding:
+                    loc = (height - self.text_padding, loc[1])
+                if loc[1] > width - self.text_padding:
+                    loc = (loc[0], width - self.text_padding)
+                
+                cv2.putText(mix_image, str(obj_id+1), (loc[1], loc[0]), cv2.FONT_HERSHEY_TRIPLEX, text_scale, (255, 255, 255), 1, cv2.LINE_AA)
             
             mix_image_list.append(mix_image)
             if self.save_visualization:

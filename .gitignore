@@ -9,3 +9,4 @@ videos
 **/*.pt
 **/*.pth
 **/__pycache__/
+!co-tracker/cotracker/utils/visualizer.py
