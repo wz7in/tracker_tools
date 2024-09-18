@@ -21,7 +21,6 @@ class Sam:
         self.predictor = build_sam2_video_predictor(
             self.model_cfg, self.sam2_checkpoint, device
         )
-        self.text_padding = 10
 
     def get_mask_on_image(
         self, masks_list, video, obj_id=None, random_color=True, save_path=None
@@ -67,14 +66,14 @@ class Sam:
                     continue
                 loc = (np.mean(loc[0]).astype(int), np.mean(loc[1]).astype(int))
                 
-                if loc[0] < self.text_padding:
-                    loc = (self.text_padding, loc[1])
-                if loc[1] < self.text_padding:
-                    loc = (loc[0], self.text_padding)
-                if loc[0] > height - self.text_padding:
-                    loc = (height - self.text_padding, loc[1])
-                if loc[1] > width - self.text_padding:
-                    loc = (loc[0], width - self.text_padding)
+                if loc[0] < 10:
+                    loc = (10, loc[1])
+                if loc[1] < 10:
+                    loc = (loc[0], 10)
+                if loc[0] > height - 10:
+                    loc = (height - 10, loc[1])
+                if loc[1] > width - 10:
+                    loc = (loc[0], width - 10)
                 
                 cv2.putText(mix_image, str(obj_id+1), (loc[1], loc[0]), cv2.FONT_HERSHEY_TRIPLEX, text_scale, (255, 255, 255), 1, cv2.LINE_AA)
             

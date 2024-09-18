@@ -129,12 +129,12 @@ class Visualizer:
 
         text_scale = res_video[0].shape[2] / 800
         for i in range(res_video[0].shape[0]):
+            img = res_video[0][i].permute(1, 2, 0).numpy()
             for n in range(tracks.shape[-2]):
-                img = res_video[0][i].permute(1, 2, 0).numpy()
                 offset = (int(img.shape[0] / 50), int(img.shape[1] / 50))
                 location = (int(tracks[0, i, n, 0].item())-offset[0] , int(tracks[0, i, n, 1].item())-offset[1])
                 cv2.putText(img, str(n+1), location, cv2.FONT_HERSHEY_TRIPLEX, text_scale, colors[i,n], 1, cv2.LINE_AA)
-                new_img.append(img)
+            new_img.append(img)
                 
         res_video = torch.from_numpy(np.stack(new_img)).permute(0, 3, 1, 2)[None]
         

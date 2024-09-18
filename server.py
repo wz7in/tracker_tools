@@ -55,9 +55,14 @@ def forward_co_tracker(model_config):
     device = model_config["cotracker"]["device"]
     mode = model_config["cotracker"]["mode"]
     select_frame = model_config["cotracker"]["select_frame"]
+    track_mode = model_config["cotracker"]["track_mode"]
     
     video = read_video_from_path(video_path)
     video = torch.from_numpy(video).permute(0, 3, 1, 2).unsqueeze(0).float().to(device)
+    
+    if track_mode == 'Forward':
+        video = video[:, select_frame[0][0]:]
+        select_frame = [[0] for _ in range(len(select_frame))]
     
     global model_cotracker
     model_cotracker = model_cotracker.to(device)
