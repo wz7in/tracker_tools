@@ -202,13 +202,16 @@ class Visualizer:
             vector_colors = flow_vis.flow_to_color(tracks - tracks[query_frame][None])
         elif segm_mask is None:
             if self.mode == "rainbow":
-                y_min, y_max = (
-                    tracks[query_frame, :, 1].min(),
-                    tracks[query_frame, :, 1].max(),
-                )
-                norm = plt.Normalize(y_min, y_max)
+                # y_min, y_max = (
+                #     tracks[query_frame, :, 1].min(),
+                #     tracks[query_frame, :, 1].max(),
+                # )
+                # y_min = 0
+                # y_max = res_video[0].shape[0]
+                norm = plt.Normalize(0, N)
                 for n in range(N):
-                    color = self.color_map(norm(tracks[query_frame, n, 1]))
+                    # color = self.color_map(norm(tracks[query_frame, n, 1]))
+                    color = self.color_map(norm(n))
                     color = np.array(color[:3])[None] * 255
                     vector_colors[:, n] = np.repeat(color, T, axis=0)
             else:

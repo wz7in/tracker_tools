@@ -23,7 +23,7 @@ class Sam:
         )
 
     def get_mask_on_image(
-        self, masks_list, video, obj_id=None, random_color=True, save_path=None
+        self, masks_list, video, obj_id=None, random_color=False, save_path=None
     ):
         if self.save_visualization:
             assert (
@@ -31,13 +31,13 @@ class Sam:
             ), "while save_visualizationis True, save_path must be provided."
         if random_color:
             color = np.concatenate([np.random.random(3)], axis=0)
+            colors = [color for _ in range(len(masks_list))]
         else:
             cmap = plt.get_cmap("tab10")
-            cmap_idx = 2 if obj_id is None else obj_id
-            color = np.array([*cmap(cmap_idx)[:3]])
+            colors = [np.array([*cmap(i)[:3]]) for i in obj_id]
 
         mask_image = [torch.tensor(masks_list[i]).permute(2, 3, 1, 0).numpy() * (
-            color.reshape(1, 1, -1)[:, :, :, None]
+            colors[i].reshape(1, 1, -1)[:, :, :, None]
         ) for i in range(len(masks_list))]
         
         mask_image = [

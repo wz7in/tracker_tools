@@ -490,7 +490,7 @@ class VideoPlayer(QWidget):
         
         self.setAutoFillBackground(False)
         palette = self.palette()
-        palette.setBrush(self.backgroundRole(), QBrush(QPixmap('./assert/bg.png').scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)))
+        palette.setBrush(self.backgroundRole(), QBrush(QPixmap('./demo/bg.png').scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)))
         self.setPalette(palette)
         if self.video_list[self.cur_video_idx-1] in self.ori_video:
             self.keyframe_bar.show()
@@ -718,6 +718,7 @@ class VideoPlayer(QWidget):
             self.track_point_num_label.hide()
             self.sam_obj_pos_label.show()
             self.anno_mode = 'sam'
+            self.progress_slider.setValue(0)
             
         elif self.anno_function_select.currentText() == 'Tracker':
             self.button_param_select.clear()
@@ -732,6 +733,7 @@ class VideoPlayer(QWidget):
             self.sam_obj_pos_label.hide()
             self.track_point_num_label.hide()
             self.anno_mode = 'tracker'
+            self.progress_slider.setValue(0)
         
         elif self.anno_function_select.currentText() == 'Interpolation':
             self.button_param_select.clear()
@@ -744,6 +746,7 @@ class VideoPlayer(QWidget):
             self.track_point_num_label.show()
             self.anno_mode = 'interpolation'
             self.max_point_num = 0
+            self.progress_slider.setValue(0)
         
         self.vis_ori.setChecked(True)
         self.load_res()
@@ -752,7 +755,7 @@ class VideoPlayer(QWidget):
         if self.video_list[self.cur_video_idx-1] not in self.ori_video:
             self.smart_message("Please load video first!")
             return
-        
+
         if self.vis_sam.isChecked():
             self.vis_track_res = True
             self.parse_res = self.sam_res[self.video_list[self.cur_video_idx-1]]
@@ -884,15 +887,16 @@ class VideoPlayer(QWidget):
         if self.video_list[self.cur_video_idx-1] not in self.tracking_points_sam:
             self.smart_message("Please load video first!")
             return
-        if self.anno_function_select == 'Sam':
+        if self.anno_function_select.currentText() == 'Sam':
+            self.sam_object_id[self.progress_slider.value()] = 0
             self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()] = [dict(
                 pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[]
             )]
-        elif self.anno_function_select == 'Tracker':
+        elif self.anno_function_select.currentText() == 'Tracker':
             self.tracking_points_tap[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()] = dict(
                 pos=[], raw_pos=[]
             )
-        elif self.anno_function_select == 'Interpolation':
+        elif self.anno_function_select.currentText() == 'Interpolation':
             self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()] = dict(
                 pos=[], raw_pos=[]
             )
@@ -1165,6 +1169,7 @@ class VideoPlayer(QWidget):
             self.load_res()
             self.progress.close()
             QMessageBox.information(self, "Success", "SAM处理完成!")
+            self.remove_frame_annotation()
         else:
             self.progress.close()
             QMessageBox.warning(self, "Error", "SAM处理失败，请重试")
@@ -1199,8 +1204,8 @@ class VideoPlayer(QWidget):
         self.sam_res[self.video_list[self.cur_video_idx-1]][frame_id:frame_id+mask_images.shape[0]] = mask_images
         
         if len(self.anno[self.video_list[self.cur_video_idx-1]]['sam']) == 0:
-            self.anno[self.video_list[self.cur_video_idx-1]]['sam'] = np.zeros((self.frame_count, *masks[0].shape))
-        self.anno[self.video_list[self.cur_video_idx-1]]['sam'][frame_id:frame_id+mask_images.shape[0]] = masks
+            self.anno[self.video_list[self.cur_video_idx-1]]['sam'] = np.zeros((masks.shape[0], self.frame_count, *masks[0,0].shape))
+        self.anno[self.video_list[self.cur_video_idx-1]]['sam'][:, frame_id:frame_id+mask_images.shape[0]] = masks
         return 1
     
     def tracker_callback(self, res):
@@ -1210,6 +1215,7 @@ class VideoPlayer(QWidget):
             self.load_res()
             self.progress.close()
             QMessageBox.information(self, "Success", "Tracker处理完成!")
+            self.remove_frame_annotation()
         else:
             self.progress.close()
             QMessageBox.warning(self, "Error", "Tracker处理失败，请重试")
@@ -1255,11 +1261,15 @@ class VideoPlayer(QWidget):
             assert len(select_frame) == len(points)
         
         elif self.co_tracker_config['mode'] == 'Mask Mode':
-            self.set_sam_config()
-            self.co_tracker_config['select_frame'] = self.sam_config['select_frame']  
+            self.smart_message("开发中，请优先使用point模式")
+            return
+            # self.set_sam_config()
+            # self.co_tracker_config['select_frame'] = self.sam_config['select_frame']  
         
         elif self.co_tracker_config['mode'] == 'Grid Mode':
-            self.co_tracker_config['grid_size'] = 10
+            self.smart_message("开发中，请优先使用point模式")
+            return
+            # self.co_tracker_config['grid_size'] = 10
         
         else:
             raise ValueError('Please select the tracker mode')
@@ -1275,9 +1285,14 @@ class VideoPlayer(QWidget):
             self.anno[self.video_list[self.cur_video_idx-1]]['track'] = np.zeros((self.frame_count, *pred_tracks[0,0].shape))
             self.anno[self.video_list[self.cur_video_idx-1]]['visibility'] = np.zeros((self.frame_count, *pred_visibility[0,0].shape))
         
-        self.track_res[self.video_list[self.cur_video_idx-1]][frame_id:frame_id+track_images.shape[0]] = track_images
-        self.anno[self.video_list[self.cur_video_idx-1]]['track'][frame_id:frame_id+track_images.shape[0]] = pred_tracks
-        self.anno[self.video_list[self.cur_video_idx-1]]['visibility'][frame_id:frame_id+track_images.shape[0]] = pred_visibility
+        if self.track_mode_selector.currentText() == 'BiDirection':
+            self.track_res[self.video_list[self.cur_video_idx-1]] = track_images
+            self.anno[self.video_list[self.cur_video_idx-1]]['track'][:] = pred_tracks[0]
+            self.anno[self.video_list[self.cur_video_idx-1]]['visibility'][:] = pred_visibility[0]
+        else:
+            self.track_res[self.video_list[self.cur_video_idx-1]][frame_id:frame_id+track_images.shape[0]] = track_images
+            self.anno[self.video_list[self.cur_video_idx-1]]['track'][frame_id:frame_id+track_images.shape[0]] = pred_tracks[0]
+            self.anno[self.video_list[self.cur_video_idx-1]]['visibility'][frame_id:frame_id+track_images.shape[0]] = pred_visibility[0]
         
         return 1
     
@@ -1318,6 +1333,11 @@ class VideoPlayer(QWidget):
         if len(wrong_frame_number_idx) > 0:
             self.smart_message("Please select the same number of points as the first frame in each frame with the same order, the wrong frame number is: " + str(wrong_frame_number_idx))
             return -1
+        
+        if self.anno[self.video_list[self.cur_video_idx-1]]['track'] is not None and self.anno[self.video_list[self.cur_video_idx-1]]['track'].shape[1] != self.max_point_num:
+            self.smart_message("Please select the same number of points as the tracker mode since the tracker mode has been used")
+            return -1 
+        
         interp_raw_points = self.get_interp_points(raw_points, select_frame)
         interp_points = self.get_interp_points(points, select_frame)
         
@@ -1337,6 +1357,9 @@ class VideoPlayer(QWidget):
                 self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][start_frame+frame_id]['pos'].append(QPoint(int(pts[point_id][0]), int(pts[point_id][1])))
         
         self.draw_image()
+        self.smart_message("Interpolation完成!")
+        self.progress_slider.setValue(start_frame)
+        
         return 1
    
     def mousePressEvent(self, event: QMouseEvent):        
@@ -1548,7 +1571,7 @@ class VideoPlayer(QWidget):
             return
 
         # load the cached description
-        anno_loc = [i for i in key_pairs if i[0] <= frame_number <= i[1]]
+        anno_loc = [i for i in key_pairs if i[0] <= frame_number <= i[1] and i[0] != i[1]]
         if len(anno_loc) == 0:
             self.smart_message('请移动到所在区域的起止帧之间')
             return
@@ -1587,7 +1610,7 @@ class VideoPlayer(QWidget):
         # Get the description for the clip
         key_pairs = list(self.lang_anno[self.video_list[self.cur_video_idx-1]].keys())
         frame_number = self.progress_slider.value()
-        anno_loc = [i for i in key_pairs if i[0] <= frame_number <= i[1]]
+        anno_loc = [i for i in key_pairs if i[0] <= frame_number <= i[1] and i[0] != i[1]]
         if len(anno_loc) > 0:
             return anno_loc[0], self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc[0]]
         return None, (None, None)
