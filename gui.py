@@ -462,6 +462,7 @@ class VideoPlayer(QWidget):
         self.track_res = dict()
         self.lang_anno = dict()
         self.video_cache = dict()
+        self.max_point_num = dict()
         self.anno_mode = 'sam'
         self.cur_frame_idx = self.progress_slider.value()
         self.pre_f_button.setDisabled(True)
@@ -745,7 +746,7 @@ class VideoPlayer(QWidget):
             self.track_mode_selector.hide()
             self.track_point_num_label.show()
             self.anno_mode = 'interpolation'
-            self.max_point_num = 0
+            self.max_point_num[self.video_list[self.cur_video_idx-1]] = 0
             self.progress_slider.setValue(0)
         
         self.vis_ori.setChecked(True)
@@ -793,7 +794,7 @@ class VideoPlayer(QWidget):
             self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][k] = dict(pos=[], raw_pos=[])
         
         self.anno[self.video_list[self.cur_video_idx-1]] = dict(
-            sam=[], track=[], visibility=[]
+            sam=[], track=None, visibility=None
         )
         self.lang_anno[self.video_list[self.cur_video_idx-1]] = dict()
         
@@ -872,6 +873,10 @@ class VideoPlayer(QWidget):
         
         self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos'].pop()
         self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['raw_pos'].pop()
+        
+        update_max_point_num = [len(self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][i]['pos']) for i in range(self.frame_count)]
+        self.max_point_num[self.video_list[self.cur_video_idx-1]] = max(update_max_point_num)
+        
         if self.last_frame is not None:
             self.draw_image()
         
@@ -942,6 +947,8 @@ class VideoPlayer(QWidget):
         self.co_tracker_config['video_path'] = self.video_list[self.cur_video_idx-1]
         self.frame_count = video.shape[0]
         self.sam_object_id = [0] * self.frame_count
+        has_interpolation = False
+        
         if self.video_list[self.cur_video_idx-1] not in self.lang_anno:
             self.lang_anno[self.video_list[self.cur_video_idx-1]] = dict()
             
@@ -961,9 +968,10 @@ class VideoPlayer(QWidget):
             self.tracking_points_tap[self.video_list[self.cur_video_idx-1]][i] = dict(
                 pos=[], raw_pos=[]
             )
-            self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][i] = dict(
-                pos=[], raw_pos=[]
-            )
+            if i not in self.tracking_points_interp[self.video_list[self.cur_video_idx-1]]:
+                self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][i] = dict(
+                    pos=[], raw_pos=[]
+                )
         
         self.vis_ori.setChecked(True)
         self.vis_track_res = False 
@@ -979,21 +987,24 @@ class VideoPlayer(QWidget):
         self.update_keyframe_bar()
         self.update_frame(0)
         self.progress_slider.setValue(0)
+        self.anno_function_select.setCurrentIndex(0)
         self.keyframe_bar.show()
-        self.video_position_label.setText(f"Frame: {self.cur_frame_idx}/{self.frame_count} | Video: {self.cur_video_idx}/{len(self.video_list)}")
+        self.video_position_label.setText(f"Frame: {self.cur_frame_idx+1}/{self.frame_count} | Video: {self.cur_video_idx}/{len(self.video_list)}")
         self.pre_f_button.setDisabled(True)
         self.sam_obj_pos_label.setText("Annotation Object: 1/1")
         if self.video_list[self.cur_video_idx-1] not in self.anno:
             self.anno[self.video_list[self.cur_video_idx-1]] = dict(
-                sam=[], track=[], visibility=[]
+                sam=[], track=None, visibility=None
             )
-        self.max_point_num = 0
+        if self.video_list[self.cur_video_idx-1] not in self.max_point_num:
+            self.max_point_num[self.video_list[self.cur_video_idx-1]] = 0
         self.seek_video()
         # for align the keyframe display length
-        self.mark_keyframe()
-        self.selected_keyframe = self.progress_slider.value()
-        self.remove_keyframe()
-        
+        if 0 not in self.keyframes[self.video_list[self.cur_video_idx-1]]:
+            self.mark_keyframe()
+            self.selected_keyframe = self.progress_slider.value()
+            self.remove_keyframe()
+
         return 1
             
     def update_frame(self, frame_number):
@@ -1030,7 +1041,7 @@ class VideoPlayer(QWidget):
         frame_number = self.progress_slider.value()
         self.update_frame(frame_number)
         self.cur_frame_idx = self.progress_slider.value()
-        self.video_position_label.setText(f"Frame: {self.cur_frame_idx}/{self.frame_count} | Video: {self.cur_video_idx}/{len(self.video_list)}")
+        self.video_position_label.setText(f"Frame: {self.cur_frame_idx+1}/{self.frame_count} | Video: {self.cur_video_idx}/{len(self.video_list)}")
 
         self.pre_f_button.setDisabled(False)
         self.next_f_button.setDisabled(False)
@@ -1052,7 +1063,7 @@ class VideoPlayer(QWidget):
         
         anno_loc, (clip_text, prim) = self.get_clip_description()
         if anno_loc is not None:
-            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]}\nPrim: {prim}\nDescription: {clip_text}")
+            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]+1} | End Frame: {anno_loc[1]+1}\nPrim: {prim}\nDescription: {clip_text}")
         else:
             self.clip_lang_input.clear()
             
@@ -1073,9 +1084,9 @@ class VideoPlayer(QWidget):
         # check if the frame number has keyframe
         if self.video_list[self.cur_video_idx-1] in self.keyframes and frame_number in self.keyframes[self.video_list[self.cur_video_idx-1]]:
             keyframe_type = self.keyframes[self.video_list[self.cur_video_idx-1]][frame_number]
-            self.frame_position_label.setText(f"Frame: {frame_number} {keyframe_type}")
+            self.frame_position_label.setText(f"Frame: {frame_number+1} {keyframe_type}")
         else:
-            self.frame_position_label.setText(f"Frame: {frame_number}")
+            self.frame_position_label.setText(f"Frame: {frame_number+1}")
 
         # Calculate the position for the label above the slider handle
         slider_x = self.progress_slider.x()
@@ -1203,7 +1214,7 @@ class VideoPlayer(QWidget):
         mask_images = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])  
         self.sam_res[self.video_list[self.cur_video_idx-1]][frame_id:frame_id+mask_images.shape[0]] = mask_images
         
-        if len(self.anno[self.video_list[self.cur_video_idx-1]]['sam']) == 0:
+        if self.anno[self.video_list[self.cur_video_idx-1]]['sam'] is None:
             self.anno[self.video_list[self.cur_video_idx-1]]['sam'] = np.zeros((masks.shape[0], self.frame_count, *masks[0,0].shape))
         self.anno[self.video_list[self.cur_video_idx-1]]['sam'][:, frame_id:frame_id+mask_images.shape[0]] = masks
         return 1
@@ -1281,7 +1292,7 @@ class VideoPlayer(QWidget):
         frame_id = co_tracker_config['select_frame'][0][0]
         track_images = np.array([cv2.cvtColor(image, cv2.COLOR_BGR2RGB) for image in images])
 
-        if len(self.anno[self.video_list[self.cur_video_idx-1]]['track']) == 0:
+        if self.anno[self.video_list[self.cur_video_idx-1]]['track'] is None:
             self.anno[self.video_list[self.cur_video_idx-1]]['track'] = np.zeros((self.frame_count, *pred_tracks[0,0].shape))
             self.anno[self.video_list[self.cur_video_idx-1]]['visibility'] = np.zeros((self.frame_count, *pred_visibility[0,0].shape))
         
@@ -1334,7 +1345,7 @@ class VideoPlayer(QWidget):
             self.smart_message("Please select the same number of points as the first frame in each frame with the same order, the wrong frame number is: " + str(wrong_frame_number_idx))
             return -1
         
-        if self.anno[self.video_list[self.cur_video_idx-1]]['track'] is not None and self.anno[self.video_list[self.cur_video_idx-1]]['track'].shape[1] != self.max_point_num:
+        if self.anno[self.video_list[self.cur_video_idx-1]]['track'] is not None and self.anno[self.video_list[self.cur_video_idx-1]]['track'].shape[1] != self.max_point_num[self.video_list[self.cur_video_idx-1]]:
             self.smart_message("Please select the same number of points as the tracker mode since the tracker mode has been used")
             return -1 
         
@@ -1343,7 +1354,7 @@ class VideoPlayer(QWidget):
         
         
         start_frame = select_frame[0]
-        if len(self.anno[self.video_list[self.cur_video_idx-1]]['track']) == 0:
+        if self.anno[self.video_list[self.cur_video_idx-1]]['track'] is None:
             self.anno[self.video_list[self.cur_video_idx-1]]['track'] = np.zeros((self.frame_count, len(interp_points[0]), 2))
             self.anno[self.video_list[self.cur_video_idx-1]]['visibility'] = np.zeros((self.frame_count, len(interp_points[0])))
         
@@ -1385,8 +1396,8 @@ class VideoPlayer(QWidget):
             elif self.anno_mode == 'interpolation':
                 self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['raw_pos'].append(original_position)
                 self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos'].append(click_position)
-                self.max_point_num = max(self.max_point_num, len(self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos']))
-                self.track_point_num_label.setText(f"Point Number: {self.max_point_num}")
+                self.max_point_num[self.video_list[self.cur_video_idx-1]] = max(self.max_point_num[self.video_list[self.cur_video_idx-1]], len(self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos']))
+                self.track_point_num_label.setText(f"Point Number: {self.max_point_num[self.video_list[self.cur_video_idx-1]]}")
                 
             
             # Draw a point on the frame
@@ -1526,7 +1537,7 @@ class VideoPlayer(QWidget):
         for frame, key_type in self.keyframes[self.video_list[self.cur_video_idx-1]].items():
             x_position = int((frame / self.frame_count) * self.keyframe_bar.width())
             if abs(mouse_pos.x() - x_position) <= 5:  # Small range to detect hover
-                QToolTip.showText(self.keyframe_bar.mapToGlobal(mouse_pos), f"Frame: {frame}")
+                QToolTip.showText(self.keyframe_bar.mapToGlobal(mouse_pos), f"Frame: {frame+1}")
                 return
         QToolTip.hideText()
 
@@ -1587,7 +1598,7 @@ class VideoPlayer(QWidget):
             cached_lang = dialog.get_text()
             prim = dialog.get_prim()
             self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc] = (cached_lang, prim)
-            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]} | End Frame: {anno_loc[1]}\nPrim: {prim}\nDescription: {cached_lang}")
+            self.clip_lang_input.setText(f"Start Frame: {anno_loc[0]+1} | End Frame: {anno_loc[1]+1}\nPrim: {prim}\nDescription: {cached_lang}")
         else:
             return 
         
