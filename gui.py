@@ -794,7 +794,7 @@ class VideoPlayer(QWidget):
             self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][k] = dict(pos=[], raw_pos=[])
         
         self.anno[self.video_list[self.cur_video_idx-1]] = dict(
-            sam=[], track=None, visibility=None
+            sam=None, track=None, visibility=None
         )
         self.lang_anno[self.video_list[self.cur_video_idx-1]] = dict()
         
@@ -994,7 +994,7 @@ class VideoPlayer(QWidget):
         self.sam_obj_pos_label.setText("Annotation Object: 1/1")
         if self.video_list[self.cur_video_idx-1] not in self.anno:
             self.anno[self.video_list[self.cur_video_idx-1]] = dict(
-                sam=[], track=None, visibility=None
+                sam=None, track=None, visibility=None
             )
         if self.video_list[self.cur_video_idx-1] not in self.max_point_num:
             self.max_point_num[self.video_list[self.cur_video_idx-1]] = 0
@@ -1211,6 +1211,7 @@ class VideoPlayer(QWidget):
             return -1
         
         frame_id = self.sam_config['select_frame']
+
         mask_images = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])  
         self.sam_res[self.video_list[self.cur_video_idx-1]][frame_id:frame_id+mask_images.shape[0]] = mask_images
         
