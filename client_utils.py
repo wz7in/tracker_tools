@@ -4,16 +4,12 @@ import requests, io, zipfile
 import cv2, torch
 from cotracker.utils.visualizer import Visualizer
 
-# root_url = 'http://10.140.1.22:10087'
 root_url = 'http://10.140.1.22:10087'
-# root_url = 'http://127.0.0.1:10086'
 
 def request_sam(config):
     url = f"{root_url}/predict_sam"
-
     # add parameters here
     is_video = config["is_video"]
-
     response = requests.post(
         url, data=json.dumps(config), headers={"content-type": "application/json"}
     )
@@ -71,10 +67,8 @@ def request_cotracker(sam_config, co_tracker_config):
         print("Error:", response)
         return None, None, None
 
-
 def request_video(video_path):
     url = f"{root_url}/get_video"
-    # add parameters here
     config = {
         "video_path": video_path,
     }

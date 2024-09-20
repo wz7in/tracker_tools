@@ -8,7 +8,7 @@ import cv2
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QMessageBox, QLineEdit, QDialogButtonBox, QTextEdit, QGridLayout,
                              QLabel, QSlider, QDialog, QHBoxLayout, QFrame, QProgressDialog, QRadioButton, QToolTip, QComboBox)
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent, QBrush
-from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread
+from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread, QThreadPool, pyqtSlot, QRunnable, QObject
 
 import yaml
 from client_utils import request_sam, request_cotracker, request_video
@@ -71,151 +71,126 @@ class TextInputDialog(QDialog):
 
 class VideoPlayer(QWidget):
     def __init__(self, args):
-        
-        # load video list
         self.video_list, self.all_anno = load_anno_file(args.anno_file, args.out_file)
-        
         super().__init__()
         self.setWindowTitle("浦器实验室视频标注工具")
+        ###########################################################
+        #################### Main Area Layout ####################
+        ###########################################################
+        main_layout = QHBoxLayout()     
         
-        # Main layout to contain both video display and the toolbar
-        main_layout = QHBoxLayout()
-        # 添加背景图片       
-        # Video area layout
+        ###########################################################
+        #################### Video Area Layout ####################
+        ###########################################################
         video_layout = QVBoxLayout()
-        
         # Video display label
         self.video_label = QLabel(self)
         self.video_label.setMouseTracking(True)
-        self.video_label.setAlignment(Qt.AlignCenter)  # Center the QLabel
+        self.video_label.setAlignment(Qt.AlignCenter)
         video_layout.addWidget(self.video_label)
-        
         # Progress slider
         self.progress_slider = QSlider(self)
-        self.progress_slider.setOrientation(Qt.Horizontal)  # Horizontal
+        self.progress_slider.setOrientation(Qt.Horizontal)  
         self.progress_slider.valueChanged.connect(self.seek_video)
         self.progress_slider.hide()  # Hide initially
         video_layout.addWidget(self.progress_slider)
-
         # Keyframe indicator bar
         self.keyframe_bar = QLabel(self)
-        self.keyframe_bar.setFixedHeight(10)  # Set the height of the keyframe bar
-        # self.keyframe_bar.setMouseTracking(True)
-        self.keyframe_bar.setAlignment(Qt.AlignCenter)  # Center the QLabel
-        # self.keyframe_bar.installEventFilter(self)  # Install event filter to handle mouse events
+        self.keyframe_bar.setFixedHeight(10) 
+        self.keyframe_bar.setMouseTracking(True)
+        self.keyframe_bar.setAlignment(Qt.AlignCenter)  
+        self.keyframe_bar.installEventFilter(self)  
         video_layout.addWidget(self.keyframe_bar)
-
-        # Initialize a list to keep track of keyframes
-        self.keyframes = {}
-        self.selected_keyframe = None  # Track the selected keyframe for removal
-        
         # Dynamic frame position label that floats above the slider
         self.frame_position_label = QLabel(self)
         self.frame_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.frame_position_label.setAlignment(Qt.AlignCenter)
         self.frame_position_label.setFixedSize(80, 20)
-        self.frame_position_label.hide()  # Hide initially
+        self.frame_position_label.hide()
         video_control_button_layout = QHBoxLayout()
-        
         # Pre video button
         self.pre_button = QPushButton("<<", self)
         self.pre_button.clicked.connect(self.pre_video)
         self.pre_button.setDisabled(True)
         video_control_button_layout.addWidget(self.pre_button)
-
-        # Pre Frame button
-        # self.pre_f_button = QPushButton("<", self)
-        # self.pre_f_button.clicked.connect(self.pre_frame)
-        # self.pre_button.setDisabled(True)
-        # video_control_button_layout.addWidget(self.pre_f_button)
-
+        # Video position label
         self.video_position_label = QLabel(self)
         self.video_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.video_position_label.setAlignment(Qt.AlignCenter)
         self.video_position_label.setFixedSize(350, 20)
         video_control_button_layout.addWidget(self.video_position_label)
-
-        # Next video button
-        # self.next_f_button = QPushButton(">", self)
-        # self.next_f_button.clicked.connect(self.next_frame)
-        # video_control_button_layout.addWidget(self.next_f_button)
-        
         # Next video button
         self.next_button = QPushButton(">>", self)
         self.next_button.clicked.connect(self.next_video)
         video_control_button_layout.addWidget(self.next_button)
         video_layout.addLayout(video_control_button_layout)
-        
         video_load_button_layout = QHBoxLayout()
-        
         # Load video button
         self.load_button = QPushButton("加载视频", self)
         self.load_button.clicked.connect(self.load_video_async)
         video_load_button_layout.addWidget(self.load_button)
-        
+        # Load video button faster
+        # self.load_button_fast = QPushButton("快速加载视频", self)
+        # self.load_button_fast.clicked.connect(self.load_video_all)
+        # video_load_button_layout.addWidget(self.load_button_fast)
+        # Play button
         self.play_button = QPushButton("播放", self)
         self.play_button.setCheckable(True)
         self.play_button.clicked.connect(self.toggle_playback)
         video_load_button_layout.addWidget(self.play_button)
-        
+        # Remove video button
         self.remove_video_button = QPushButton("移除视频", self)
         self.remove_video_button.clicked.connect(self.clear_video)
         video_load_button_layout.addWidget(self.remove_video_button)
-        
         video_layout.addLayout(video_load_button_layout)
-        
-        # Add video layout to the main layout
         main_layout.addLayout(video_layout)
-        
-        # Separator line between video area and toolbar
+        ###########################################################
+        ######################## Separator ########################
+        ###########################################################
         separator = QFrame()
         separator.setFrameShape(QFrame.VLine)
         separator.setFrameShadow(QFrame.Sunken)
         main_layout.addWidget(separator)
-
-        # Toolbar layout
+        ###########################################################
+        #################### Toolbar Area Layout ##################
+        ###########################################################
         self.toolbar_layout = QVBoxLayout()
-
-        # Add the horizontal layout to the toolbar layout
+        
+        # Auto-annotation function title layout
         function_title_layout = QHBoxLayout()
         function_title = QLabel("自动标注工具区", self)
         function_title.setAlignment(Qt.AlignLeft)  # Left align the title
         function_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         function_title_layout.addWidget(function_title)
-        
         line = QFrame(self)
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         line.setStyleSheet("color: grey;")  # Set the same color as the title
         function_title_layout.addWidget(line)
         self.toolbar_layout.addLayout(function_title_layout)
-        
+        # Auto-annotation function selection layout
         anno_button_layout = QHBoxLayout()
         self.anno_function_select = QComboBox()
         self.anno_function_select.addItem('分割模型')
         self.anno_function_select.addItem('跟踪模型')
         self.anno_function_select.addItem('插值模型')
-        
-        # button params for different functions
+        # mode select button
         self.button_param_select = QComboBox()
         self.button_param_select.addItem('视频模式')
         self.button_param_select.addItem('单帧模式')
-        
-        # display tracking point numbers in interpolation mode
+        # tracking point numbers displayer in interpolation mode
         self.track_point_num_label = QLabel(self)
         self.track_point_num_label.setStyleSheet("background-color: #E3E3E3;")
         self.track_point_num_label.setAlignment(Qt.AlignCenter)
         self.track_point_num_label.setFixedSize(150, 20)
         self.track_point_num_label.hide()
-        
+        # track mode selector
         self.track_mode_selector = QComboBox()
         self.track_mode_selector.addItems(['双向', '前向'])
         self.track_mode_selector.hide()
-        
         self.anno_function_select.currentIndexChanged.connect(self.update_function_select)
-    
+        # run button
         click_action_button = QPushButton("运行", self)
-        # select color
         click_action_button.clicked.connect(self.get_anno_result)
         anno_button_layout.addWidget(self.anno_function_select)
         anno_button_layout.addWidget(self.button_param_select)
@@ -223,161 +198,95 @@ class VideoPlayer(QWidget):
         anno_button_layout.addWidget(self.track_point_num_label)
         anno_button_layout.addWidget(click_action_button)
         self.toolbar_layout.addLayout(anno_button_layout)
-        
         self.sam_object_layout = QHBoxLayout()
-        
+        # sam pre object button
         self.sam_pre_button = QPushButton("上一个物体", self)
         self.sam_pre_button.clicked.connect(self.pre_sam_object)
         self.sam_pre_button.setDisabled(True)
-        
+        # sam object position label
         self.sam_obj_pos_label = QLabel(self)
         self.sam_obj_pos_label.setStyleSheet("background-color: #E3E3E3;")
         self.sam_obj_pos_label.setAlignment(Qt.AlignCenter)
         self.sam_obj_pos_label.setFixedSize(150, 20)
-        
+        # sam next object button
         self.sam_next_button = QPushButton("下一个/添加物体", self)
         self.sam_next_button.clicked.connect(self.next_sam_object)
         self.sam_next_button.setDisabled(True)
-        
         self.sam_object_layout.addWidget(self.sam_pre_button)
         self.sam_object_layout.addWidget(self.sam_obj_pos_label)
         self.sam_object_layout.addWidget(self.sam_next_button)
         self.toolbar_layout.addLayout(self.sam_object_layout)
         
-        # self.edit_button_layout = QHBoxLayout()
-
-        # self.edit_button = QPushButton("Edit keypoints", self)
-        # self.edit_button.clicked.connect(self.edit_track_pts)
-        # self.edit_button_layout.addWidget(self.edit_button)
-        # self.edit_button.hide()
-
-        # self.close_edit_button = QPushButton("Save Edit", self)
-        # self.close_edit_button.clicked.connect(self.close_edit)
-        # self.edit_button_layout.addWidget(self.close_edit_button)
-        # self.close_edit_button.hide()
-        
-        # Create a horizontal layout for the title and line
+        # Visualization area layout
         annotation_title_layout = QHBoxLayout()
         annotation_title = QLabel("标注及结果可视化区域", self)
         annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
         annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         annotation_title_layout.addWidget(annotation_title)
-        
         line = QFrame(self)
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         line.setStyleSheet("color: grey;")  # Set the same color as the title
         annotation_title_layout.addWidget(line)
-        
         self.toolbar_layout.addLayout(annotation_title_layout)
+        # Visualization button layout
         vis_button_layout = QHBoxLayout()
-
         self.vis_button = QPushButton("可视化", self)
         self.vis_button.clicked.connect(self.load_res)
         vis_button_layout.addWidget(self.vis_button)
-
         self.vis_ori = QRadioButton("原始视频", self)
         vis_button_layout.addWidget(self.vis_ori)
-
         self.vis_sam = QRadioButton("分割结果视频", self)
         vis_button_layout.addWidget(self.vis_sam)
-
         self.vis_tracker = QRadioButton("跟踪结果视频", self)
         vis_button_layout.addWidget(self.vis_tracker)
         self.toolbar_layout.addLayout(vis_button_layout)
 
-        # Create a horizontal layout for the title and line
-        # annotation_title_layout = QHBoxLayout()
-
-        # Add a label for the per-frame annotation title
-        # annotation_title = QLabel("Language Annotation", self)
-        # annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
-        # annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
-        # annotation_title_layout.addWidget(annotation_title)
-
-        # Add a horizontal line to fill the remaining space
-        # line = QFrame(self)
-        # line.setFrameShape(QFrame.HLine)
-        # line.setFrameShadow(QFrame.Sunken)
-        # line.setStyleSheet("color: grey;")  # Set the same color as the title
-        # annotation_title_layout.addWidget(line)
-
-        # # Add the horizontal layout to the toolbar layout
-        # self.toolbar_layout.addLayout(annotation_title_layout)
-        
-        # self.description_input = QLineEdit(self)
-        # self.description_input.setPlaceholderText("Enter description...")
-        # self.toolbar_layout.addWidget(self.description_input)
-       
-        # Language description input
-        # self.desc_layout = QHBoxLayout()
-        # self.description_mode = QComboBox(self)
-        # self.description_mode.addItems(['Video', 'Clip'])
-        # self.desc_layout.addWidget(self.description_mode)
-        
-        # # Submit button for language description
-        # self.submit_description_button = QPushButton("Add / Motified Description", self)
-        # self.submit_description_button.clicked.connect(self.submit_description)
-        # self.desc_layout.addWidget(self.submit_description_button)
-        
-        # self.toolbar_layout.addLayout(self.desc_layout)
-
-        # edit mode layout
+        # edit mode are layout
         annotation_title_layout = QHBoxLayout()
         annotation_title = QLabel("标注编辑区域", self)
         annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
         annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         annotation_title_layout.addWidget(annotation_title)
-
-        # Add a horizontal line to fill the remaining space
         line = QFrame(self)
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         line.setStyleSheet("color: grey;")  # Set the same color as the title
         annotation_title_layout.addWidget(line)
-
-        # Add the horizontal layout to the toolbar layout
         self.toolbar_layout.addLayout(annotation_title_layout)
-        
+        # clear all button
         self.control_button_layout = QHBoxLayout()
-        # clear_all_button
         self.clear_all_button = QPushButton("删除所有标注", self)
         self.clear_all_button.clicked.connect(self.clear_annotations)
         self.control_button_layout.addWidget(self.clear_all_button)
-        
-        # remove_last_button
+        # remove last button
         self.remove_last_button = QPushButton("删除上一个标注", self)
         self.remove_last_button.clicked.connect(self.remove_last_annotation)
         self.control_button_layout.addWidget(self.remove_last_button)
-        
+        # remove frame button
         self.remove_frame_button = QPushButton("删除当前帧标注", self)
         self.remove_frame_button.clicked.connect(self.remove_frame_annotation)
         self.control_button_layout.addWidget(self.remove_frame_button)
-        
+        # save button
         self.save_button = QPushButton("保存标注", self)
         self.save_button.clicked.connect(self.load_and_save_result)
         self.control_button_layout.addWidget(self.save_button)
-        
         self.toolbar_layout.addLayout(self.control_button_layout)
 
-        # Add spacer to push the items to the top
-        # self.toolbar_layout.addStretch()
-        
-        # Add Language Show
+        # Video language annotation area
         lang_layout = QVBoxLayout()
         lang_title_layout = QHBoxLayout()
         lang_title = QLabel("视频语言标注展示区域", self)
         lang_title.setAlignment(Qt.AlignLeft)  # Left align the title
         lang_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         lang_title_layout.addWidget(lang_title)
-        # Add a horizontal line to fill the remaining space
         line = QFrame(self)
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         line.setStyleSheet("color: grey;")  # Set the same color as the title
         lang_title_layout.addWidget(line)
         lang_layout.addLayout(lang_title_layout)
-        # Add a text edit to show the language annotation
+        # Video Language annotation show area
         self.video_lang_input = QTextEdit(self)
         self.video_lang_input.setReadOnly(True)
         self.video_lang_input.setFixedHeight(60)
@@ -385,21 +294,20 @@ class VideoPlayer(QWidget):
         lang_layout.addWidget(self.video_lang_input)
         self.toolbar_layout.addLayout(lang_layout)
         
-        # Add Language Show
+        # Video clip language annotation area 
         lang_layout = QVBoxLayout()
         lang_title_layout = QHBoxLayout()
         lang_title = QLabel("视频段语言标注展示区域", self)
         lang_title.setAlignment(Qt.AlignLeft)  # Left align the title
         lang_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         lang_title_layout.addWidget(lang_title)
-        # Add a horizontal line to fill the remaining space
         line = QFrame(self)
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
         line.setStyleSheet("color: grey;")  # Set the same color as the title
         lang_title_layout.addWidget(line)
         lang_layout.addLayout(lang_title_layout)
-        # Add a text edit to show the language annotation
+        # Video clip Language annotation show area
         self.clip_lang_input = QTextEdit(self)
         self.clip_lang_input.setReadOnly(True)
         self.clip_lang_input.setFixedHeight(80)
@@ -407,14 +315,13 @@ class VideoPlayer(QWidget):
         lang_layout.addWidget(self.clip_lang_input)
         self.toolbar_layout.addLayout(lang_layout)
         
-        # Add Tool Tip
+        # Tool tips area layout
         self.tips_layout = QVBoxLayout()
         self.tips_title_layout = QHBoxLayout()
         tips_title = QLabel("关键帧快捷键", self)
         tips_title.setAlignment(Qt.AlignLeft)  # Left align the title
         tips_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         self.tips_title_layout.addWidget(tips_title)
-        # Add a horizontal line to fill the remaining space
         line = QFrame(self)
         line.setFrameShape(QFrame.HLine)
         line.setFrameShadow(QFrame.Sunken)
@@ -422,13 +329,11 @@ class VideoPlayer(QWidget):
         self.tips_title_layout.addWidget(line)
         self.tips_layout.addLayout(self.tips_title_layout)
         self.toolbar_layout.addLayout(self.tips_layout)
-        
         self.tips_text_layout = QGridLayout()
         tips_items = ['Q: 标志开始帧','L: 添加段语言标注','S: 标记结束帧','删除: 删除标记帧','A: 上一帧','回车: 添加视频标注','D: 下一帧']
         for i, item in enumerate(tips_items):
             tips_input = QTextEdit(self)
             tips_input.setText(item)
-            # tips_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
             tips_input.setReadOnly(True)
             tips_input.setSizeAdjustPolicy(QTextEdit.AdjustToContents)
             tips_input.setFixedHeight(20)
@@ -436,12 +341,8 @@ class VideoPlayer(QWidget):
                 self.tips_text_layout.addWidget(tips_input, 1, i-4)
             else:
                 self.tips_text_layout.addWidget(tips_input, 0, i)
-        
         self.toolbar_layout.addLayout(self.tips_text_layout)
-        
-        # Add toolbar layout to the main layout
         main_layout.addLayout(self.toolbar_layout)
-
         self.setLayout(main_layout)
 
         self.cur_video_idx = 1
@@ -450,14 +351,18 @@ class VideoPlayer(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self.play_video)
 
-        # add config
+        ##############################################################
+        ##################### initialize Configs #####################
+        ##############################################################
         config_path = "./config/config.yaml"
         with open(config_path, "r") as f:
             self.model_config = yaml.load(f, Loader=yaml.FullLoader)
         self.sam_config = self.model_config["sam"]
         self.co_tracker_config = self.model_config["cotracker"]
 
-        # initialize
+        ##############################################################
+        #################### initialize Variables ####################
+        ##############################################################
         self.frame_count = 0
         self.last_frame = None
         self.tracking_points_sam = dict()
@@ -473,8 +378,8 @@ class VideoPlayer(QWidget):
         self.max_point_num = dict()
         self.anno_mode = 'sam'
         self.cur_frame_idx = self.progress_slider.value()
-        # self.pre_f_button.setDisabled(True)
-        # self.next_f_button.setDisabled(True)
+        self.keyframes = {} 
+        self.selected_keyframe = None 
         self.is_edit_mode = False
         self.edit_track_res = None
         self.key_frame_mode = 'Start'
@@ -545,9 +450,6 @@ class VideoPlayer(QWidget):
     def next_frame(self):
         if self.cur_frame_idx < self.frame_count:
             self.cur_frame_idx += 1
-        # if self.cur_frame_idx == self.frame_count-1:
-        #     self.next_f_button.setDisabled(True)
-        # self.pre_f_button.setDisabled(False)
         self.video_position_label.setText(f"帧: {self.cur_frame_idx}/{self.frame_count} | 视频: {self.cur_video_idx}/{len(self.video_list)}")
         self.sam_object_id[self.cur_frame_idx] = 0
         
@@ -575,9 +477,6 @@ class VideoPlayer(QWidget):
     def pre_frame(self):
         if self.cur_frame_idx >= 1:
             self.cur_frame_idx -= 1
-        # if self.cur_frame_idx == 0:
-        #     self.pre_f_button.setDisabled(True)
-        # self.next_f_button.setDisabled(False)
         self.video_position_label.setText(f"帧: {self.cur_frame_idx}/{self.frame_count} | 视频: {self.cur_video_idx}/{len(self.video_list)}")
         self.sam_object_id[self.cur_frame_idx] = 0
         
@@ -616,6 +515,25 @@ class VideoPlayer(QWidget):
             self.video_cache[self.video_list[self.cur_video_idx-1]] = video
         return video
     
+    def request_video_by_name(self, name):
+        if name not in self.video_cache or self.video_cache[name] is None:
+            video = request_video(name)
+        return video, name
+    
+    def request_video_quiet(self, name):
+        video_thread = self.request_video_async_quiet(name)
+        # 传入参数
+        video_thread.signals.finished.connect(self.load_video_quiet_callback)
+        self.threadpool.start(video_thread)
+    
+    def load_video_all(self):
+        self.threadpool = QThreadPool()
+        for video_name in self.video_list:
+            if video_name not in self.video_cache or self.video_cache[video_name] is None:
+                print(f"Loading video {video_name}")
+                self.request_video_quiet(video_name)
+                break
+    
     def request_video_async(self):
         class VideoThread(QThread):
             finished = pyqtSignal(object)
@@ -627,6 +545,23 @@ class VideoPlayer(QWidget):
                 self.finished.emit(res)
         video_thread = VideoThread(self)
         return video_thread
+    
+    @pyqtSlot(object)
+    def request_video_async_quiet(self, video_name):
+        class WorkerSignals(QObject):
+            finished = pyqtSignal(tuple)
+        class Worker(QRunnable):
+            def __init__(self, parent):
+                super().__init__()
+                self.parent = parent
+                self.signals = WorkerSignals()
+            @pyqtSlot()
+            def run(self):
+                result = self.parent.request_video_by_name(video_name)
+                self.signals.finished.emit(result)
+        
+        worker = Worker(self)
+        return worker
     
     def request_sam_async(self):
         class SamThread(QThread):
@@ -921,9 +856,24 @@ class VideoPlayer(QWidget):
             self.load_video(video)
             self.progress.close()
             self.smart_message("视频加载完成!")
+            self.load_video_all()
         else:
             self.progress.close()
             self.smart_message("视频加载失败，请检查网络设置")
+            return
+    
+    def load_video_quiet_callback(self, res):
+        video, name = res
+        if video is not None:
+            self.video_cache[name] = video
+            print(f'{name} video load success!')
+            for video_name in self.video_list:
+                if video_name not in self.video_cache or self.video_cache[video_name] is None:
+                    print(f"Loading video {video_name}")
+                    self.request_video_quiet(video_name)
+                    break
+        else:
+            print(f'Error: {name} video load failed!')
             return
         
     def load_video_async(self):
@@ -1536,11 +1486,6 @@ class VideoPlayer(QWidget):
         # Set the updated image to the QLabel
         self.keyframe_bar.setPixmap(QPixmap.fromImage(keyframe_image))
     
-    def closeEvent(self, event):
-        # if self.cap is not None:
-        #     self.cap.release()
-        event.accept()
-     
     def keyPressEvent(self, event):
         if self.video_list[self.cur_video_idx-1] not in self.ori_video:
             self.smart_message('请先加载视频')
@@ -1621,6 +1566,7 @@ class VideoPlayer(QWidget):
         if len(anno_loc) > 0:
             return anno_loc[0], self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc[0]]
         return None, (None, None)
+
 
 if __name__ == "__main__":
     
