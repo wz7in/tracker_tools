@@ -15,43 +15,50 @@ from client_utils import request_sam, request_cotracker, request_video
 import numpy as np
 
 def load_anno_file(anno_file, out_file):
-    with open(anno_file, 'r') as f:
-        video_list = f.readlines()
-        video_list = [x.strip() for x in video_list]
-    
+    # with open(anno_file, 'r') as f:
+    #     video_list = f.readlines()
+    #     video_list = [x.strip() for x in video_list]
+    video_anno = json.load(open(anno_file, 'r'))
     if os.path.exists(out_file):
         anno = pickle.load(open(out_file, 'rb'))
     else:
-        anno = {}
-        
-    return video_list, anno
+        anno = {}    
+    return sorted(list(video_anno.keys())), video_anno, anno
 
 class TextInputDialog(QDialog):
     
-    def __init__(self, initial_text='', parent=None, is_video=True):
+    def __init__(self, initial_text='', parent=None, is_video=True, video_anno_json=None):
         super().__init__(parent)
         self.setWindowTitle('请输入语言标注')
         self.is_video = is_video
         
         self.main_layout = QGridLayout(self)
-        
-        self.text_title = QLabel('请输入语言标注:', self) 
-        self.text_input = QLineEdit(self)
-        self.text_input.setFixedSize(300,20)
-        
-        self.text_input.setText(initial_text)
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         
         if not is_video:
-            self.prim_title = QLabel('请选择操作类型:', self)
+            self.prim_title = QLabel('请选择语言标注:', self)
+            self.prim_select = QComboBox()
+            self.prim_select.addItems([i for i in video_anno_json.keys() if not video_anno_json[i]])
+            self.mode_title = QLabel('请选择原子动作:', self)
             self.mode_select = QComboBox()
-            self.mode_select.addItems(['Open', 'Close', 'Move'])
-            self.main_layout.addWidget(self.prim_title, 1, 0)
+            self.mode_select.addItems(['移动手臂','推物体','拉物体','放下物体','抓起物体','按压物体','旋转物体'])
+            self.language_edit = QTextEdit()
+            self.language_title = QLabel('请确认语言标注:', self)
+            self.language_title.hide()
+            self.language_edit.hide()
+            self.prim_select.currentIndexChanged.connect(self.language_select)
+            self.main_layout.addWidget(self.language_edit, 2, 1)
+            self.main_layout.addWidget(self.language_title, 2, 0)
+            self.main_layout.addWidget(self.mode_title, 1, 0)
             self.main_layout.addWidget(self.mode_select, 1, 1)
-            self.main_layout.addWidget(self.text_title, 0, 0)
-            self.main_layout.addWidget(self.text_input, 0, 1)
-            self.main_layout.addWidget(self.button_box, 2, 0, 1, 2)
+            self.main_layout.addWidget(self.prim_title, 0, 0)
+            self.main_layout.addWidget(self.prim_select, 0, 1)
+            self.main_layout.addWidget(self.button_box, 3, 0, 1, 2)
         else:
+            self.text_title = QLabel('请输入语言标注:', self)
+            self.text_input = QLineEdit(self)
+            self.text_input.setFixedSize(300,20)
+            self.text_input.setText(initial_text)
             self.main_layout.addWidget(self.text_title, 0, 0)
             self.main_layout.addWidget(self.text_input, 0, 1)
             self.main_layout.addWidget(self.button_box, 1, 0, 1, 2)
@@ -61,17 +68,23 @@ class TextInputDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
         
     def get_text(self):
-        return self.text_input.text()
+        return self.language_edit.toPlainText() if not self.is_video else self.text_input.text()
     
     def get_prim(self):
         if not self.is_video:
             return self.mode_select.currentText()
         else:
             return ''
+    
+    def language_select(self):
+        if not self.is_video:
+            self.language_title.show()
+            self.language_edit.show()
+            self.language_edit.setText(self.prim_select.currentText())
 
 class VideoPlayer(QWidget):
     def __init__(self, args):
-        self.video_list, self.all_anno = load_anno_file(args.anno_file, args.out_file)
+        self.video_list, self.video_anno_list, self.all_anno = load_anno_file(args.anno_file, args.out_file)
         super().__init__()
         self.setWindowTitle("浦器实验室视频标注工具")
         ###########################################################
@@ -330,7 +343,7 @@ class VideoPlayer(QWidget):
         self.tips_layout.addLayout(self.tips_title_layout)
         self.toolbar_layout.addLayout(self.tips_layout)
         self.tips_text_layout = QGridLayout()
-        tips_items = ['Q: 标志开始帧','L: 添加段语言标注','S: 标记结束帧','删除: 删除标记帧','A: 上一帧','回车: 添加视频标注','D: 下一帧']
+        tips_items = ['W: 标志开始帧','L: 添加段语言标注','S: 标记结束帧','删除: 删除标记帧','A: 上一帧','回车: 添加视频标注','D: 下一帧']
         for i, item in enumerate(tips_items):
             tips_input = QTextEdit(self)
             tips_input.setText(item)
@@ -382,7 +395,9 @@ class VideoPlayer(QWidget):
         self.selected_keyframe = None 
         self.is_edit_mode = False
         self.edit_track_res = None
-        self.key_frame_mode = 'Start'
+        self.key_frame_mode = 'start'
+        self.requesting_item = None
+        self.threadpool = None
         
     def pre_sam_object(self):
         if self.sam_object_id[self.progress_slider.value()] > 0:
@@ -448,8 +463,10 @@ class VideoPlayer(QWidget):
         self.video_position_label.setText(f"Frame: -/- | Video: {self.cur_video_idx}/{len(self.video_list)}")
 
     def next_frame(self):
-        if self.cur_frame_idx < self.frame_count:
+        if self.cur_frame_idx < self.frame_count - 1:
             self.cur_frame_idx += 1
+        else:
+            return
         self.video_position_label.setText(f"帧: {self.cur_frame_idx}/{self.frame_count} | 视频: {self.cur_video_idx}/{len(self.video_list)}")
         self.sam_object_id[self.cur_frame_idx] = 0
         
@@ -470,14 +487,16 @@ class VideoPlayer(QWidget):
         
         anno_loc, (clip_text, prim) = self.get_clip_description()
         if anno_loc is not None:
-            self.clip_lang_input.setText(f"开始帧: {anno_loc[0]} | 结束帧: {anno_loc[1]}\n原子动作: {prim}\n动作描述: {clip_text}")
+            self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {clip_text}")
         else:
             self.clip_lang_input.setText('')
         
     def pre_frame(self):
         if self.cur_frame_idx >= 1:
             self.cur_frame_idx -= 1
-        self.video_position_label.setText(f"帧: {self.cur_frame_idx}/{self.frame_count} | 视频: {self.cur_video_idx}/{len(self.video_list)}")
+        else:
+            return
+        self.video_position_label.setText(f"帧: {self.cur_frame_idx+1}/{self.frame_count} | 视频: {self.cur_video_idx}/{len(self.video_list)}")
         self.sam_object_id[self.cur_frame_idx] = 0
         
         if self.sam_object_id[self.cur_frame_idx] == 0:
@@ -498,7 +517,7 @@ class VideoPlayer(QWidget):
         
         anno_loc, (clip_text, prim) = self.get_clip_description()
         if anno_loc is not None:
-            self.clip_lang_input.setText(f"开始帧: {anno_loc[0]} | 结束帧: {anno_loc[1]}\n原子动作: {prim}\n动作描述: {clip_text}")
+            self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {clip_text}")
         else:
             self.clip_lang_input.setText('') 
     
@@ -507,7 +526,9 @@ class VideoPlayer(QWidget):
             video = self.video_cache[self.video_list[self.cur_video_idx-1]]
         else:
             try:
+                self.requesting_item = self.video_list[self.cur_video_idx-1]
                 video = request_video(self.video_list[self.cur_video_idx-1])
+                self.requesting_item = None
             except Exception as e:
                 return None
             if video is None:
@@ -517,7 +538,9 @@ class VideoPlayer(QWidget):
     
     def request_video_by_name(self, name):
         if name not in self.video_cache or self.video_cache[name] is None:
+            self.requesting_item = name
             video = request_video(name)
+            self.requesting_item = None
         return video, name
     
     def request_video_quiet(self, name):
@@ -529,6 +552,8 @@ class VideoPlayer(QWidget):
     def load_video_all(self):
         self.threadpool = QThreadPool()
         for video_name in self.video_list:
+            if self.requesting_item == video_name:
+                continue
             if video_name not in self.video_cache or self.video_cache[video_name] is None:
                 print(f"Loading video {video_name}")
                 self.request_video_quiet(video_name)
@@ -787,13 +812,15 @@ class VideoPlayer(QWidget):
         neg_click_position = self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['neg']
         
         if len(click_action) > 0 and click_action[-1] == 1 and len(pos_click_position) > 0:
-            self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['pos'].pop()
-            self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['raw_pos'].pop()
-            self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['labels'].pop()
+            if len(pos_click_position) > 0:
+                self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['pos'].pop()
+                self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['raw_pos'].pop()
+                self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['labels'].pop()
         elif len(click_action) > 0 and click_action[-1] == -1 and len(neg_click_position) > 0:
-            self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['neg'].pop()
-            self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['raw_neg'].pop()
-            self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['labels'].pop()
+            if len(neg_click_position) > 0:
+                self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['neg'].pop()
+                self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['raw_neg'].pop()
+                self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()][sam_object_id]['labels'].pop()
         
         if self.last_frame is not None:
             self.draw_image()
@@ -803,9 +830,9 @@ class VideoPlayer(QWidget):
         if self.video_list[self.cur_video_idx-1] not in self.tracking_points_tap:
             self.smart_message("请先加载视频!")
             return
-        
-        self.tracking_points_tap[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos'].pop()
-        self.tracking_points_tap[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['raw_pos'].pop()
+        if len(self.tracking_points_tap[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos']) > 0:
+            self.tracking_points_tap[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos'].pop()
+            self.tracking_points_tap[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['raw_pos'].pop()
         if self.last_frame is not None:
             self.draw_image()
     
@@ -814,8 +841,9 @@ class VideoPlayer(QWidget):
             self.smart_message("请先加载视频!")
             return
         
-        self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos'].pop()
-        self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['raw_pos'].pop()
+        if len(self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos']) > 0:
+            self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['pos'].pop()
+            self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][self.progress_slider.value()]['raw_pos'].pop()
         
         update_max_point_num = [len(self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][i]['pos']) for i in range(self.frame_count)]
         self.max_point_num[self.video_list[self.cur_video_idx-1]] = max(update_max_point_num)
@@ -855,8 +883,8 @@ class VideoPlayer(QWidget):
         if video is not None:
             self.load_video(video)
             self.progress.close()
-            self.smart_message("视频加载完成!")
-            self.load_video_all()
+            if self.threadpool is None:
+                self.load_video_all()
         else:
             self.progress.close()
             self.smart_message("视频加载失败，请检查网络设置")
@@ -877,6 +905,11 @@ class VideoPlayer(QWidget):
             return
         
     def load_video_async(self):
+        if self.requesting_item == self.video_list[self.cur_video_idx-1]:
+            self.smart_message("请等待，正在加载视频...")
+            self.clear_video()
+            return
+        
         self.progress = QProgressDialog("请等待，正在加载视频...", None, 0, 0, self)
         self.progress.setWindowModality(Qt.WindowModal)
         self.progress.setCancelButton(None)
@@ -888,11 +921,11 @@ class VideoPlayer(QWidget):
             res = self.load_video(video)
             if res == -1:
                 self.progress.close()
-                QMessageBox.warning(self, "Error", "视频加载失败，请检查网络设置")
+                self.smart_message("视频加载失败，请检查网络设置")
             else:
                 self.progress.close()
-                QMessageBox.information(self, "Success", "视频加载完成!")
-        else:
+                # self.smart_message("视频加载完成!")
+        else:     
             self.video_thread = self.request_video_async()
             self.video_thread.finished.connect(self.load_video_callback)
             self.video_thread.start()
@@ -1042,7 +1075,8 @@ class VideoPlayer(QWidget):
         # check if the frame number has keyframe
         if self.video_list[self.cur_video_idx-1] in self.keyframes and frame_number in self.keyframes[self.video_list[self.cur_video_idx-1]]:
             keyframe_type = self.keyframes[self.video_list[self.cur_video_idx-1]][frame_number]
-            keyframe_type = '开始' if keyframe_type == 'Start' else '结束'
+            print(keyframe_type)
+            keyframe_type = '开始' if keyframe_type.lower() == 'start' else '结束'
             self.frame_position_label.setText(f"帧: {frame_number+1}({keyframe_type})")
         else:
             self.frame_position_label.setText(f"帧: {frame_number+1}")
@@ -1121,12 +1155,11 @@ class VideoPlayer(QWidget):
         
         return 0
     
-    def smart_message(self, message):
+    def smart_message(self, message, auto_close=True):
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Information)
         msg.setWindowTitle('提示')
         msg.setText(message)
-        msg.setStandardButtons(QMessageBox.Ok)
         msg.exec_()
     
     def sam_callback(self, res):
@@ -1135,7 +1168,7 @@ class VideoPlayer(QWidget):
             self.vis_sam.setChecked(True)
             self.load_res()
             self.progress.close()
-            QMessageBox.information(self, "Success", "分割处理完成!")
+            # QMessageBox.information(self, "Success", "分割处理完成!")
             self.remove_frame_annotation()
         else:
             self.progress.close()
@@ -1182,7 +1215,7 @@ class VideoPlayer(QWidget):
             self.vis_tracker.setChecked(True)
             self.load_res()
             self.progress.close()
-            QMessageBox.information(self, "Success", "跟踪处理完成!")
+            # QMessageBox.information(self, "Success", "跟踪处理完成!")
             self.remove_frame_annotation()
         else:
             self.progress.close()
@@ -1191,7 +1224,7 @@ class VideoPlayer(QWidget):
             
     def get_tap_async(self):
         if self.video_list[self.cur_video_idx-1] not in self.ori_video:
-            self.smart_message("Please load video first!")
+            self.smart_message("请先加载视频！")
             return
         
         self.progress = QProgressDialog("请等待，正在请求Tracker结果...", None, 0, 0, self)
@@ -1250,7 +1283,7 @@ class VideoPlayer(QWidget):
             self.anno[self.video_list[self.cur_video_idx-1]]['track'] = np.zeros((self.frame_count, *pred_tracks[0,0].shape))
             self.anno[self.video_list[self.cur_video_idx-1]]['visibility'] = np.zeros((self.frame_count, *pred_visibility[0,0].shape))
         
-        if self.track_mode_selector.currentText() == 'BiDirection':
+        if self.track_mode_selector.currentText() == '双向':
             self.track_res[self.video_list[self.cur_video_idx-1]] = track_images
             self.anno[self.video_list[self.cur_video_idx-1]]['track'][:] = pred_tracks[0]
             self.anno[self.video_list[self.cur_video_idx-1]]['visibility'][:] = pred_visibility[0]
@@ -1322,7 +1355,7 @@ class VideoPlayer(QWidget):
                 self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][start_frame+frame_id]['pos'].append(QPoint(int(pts[point_id][0]), int(pts[point_id][1])))
         
         self.draw_image()
-        self.smart_message("插值完成!")
+        # self.smart_message("插值完成!")
         self.progress_slider.setValue(start_frame)
         
         return 1
@@ -1428,14 +1461,10 @@ class VideoPlayer(QWidget):
             self.smart_message('请先加载视频')
             return
         self.add_video_description()
-        # if self.description_mode.currentText() == 'Frame':
-        #     self.add_frame_discribtion()
-        # elif self.description_mode.currentText() == 'Video':
-        #     self.add_video_description()
 
     def mark_keyframe(self):
         current_frame = self.progress_slider.value()
-        if self.key_frame_mode == 'Start':
+        if self.key_frame_mode == 'start':
             self.keyframes[self.video_list[self.cur_video_idx-1]][current_frame] = 'start'
         elif self.key_frame_mode == 'End':
             self.keyframes[self.video_list[self.cur_video_idx-1]][current_frame] = 'end'
@@ -1446,6 +1475,10 @@ class VideoPlayer(QWidget):
         key_pairs = []
         if len(key_frame_list) <= 1:
             self.smart_message('请先标记关键帧')
+            return -1
+        
+        if len(key_frame_list) % 2 != 0:
+            self.smart_message('请检查关键帧标记是否正确，必须是start和end交替出现')
             return -1
         
         for i in range(0, len(key_frame_list), 2):
@@ -1496,7 +1529,7 @@ class VideoPlayer(QWidget):
         elif key == Qt.Key_D:
             self.next_frame()
         elif key == Qt.Key_W:
-            self.key_frame_mode = 'Start'
+            self.key_frame_mode = 'start'
             self.mark_keyframe()
             self.update_frame_position_label()
         elif key == Qt.Key_S:
@@ -1534,7 +1567,7 @@ class VideoPlayer(QWidget):
         else:
             cached_lang, prim = '', ''
         # Create a dialog to get the description from the user
-        dialog = TextInputDialog(cached_lang, self, False)
+        dialog = TextInputDialog(cached_lang, self, False, self.video_anno_list[self.video_list[self.cur_video_idx-1]])
         if dialog.exec_() == QDialog.Accepted:
             cached_lang = dialog.get_text()
             prim = dialog.get_prim()
@@ -1572,7 +1605,7 @@ if __name__ == "__main__":
     
     # load annotation file
     args = argparse.ArgumentParser()
-    args.add_argument('--anno_file', type=str, default='./data/video_list.txt')
+    args.add_argument('--anno_file', type=str, default='./data/lang_config.json')
     args.add_argument('--out_file', type=str, default='./data/annotation.json')
     args = args.parse_args()
     
