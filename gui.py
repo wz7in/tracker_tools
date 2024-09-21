@@ -27,7 +27,7 @@ def load_anno_file(anno_file, out_file):
 
 class TextInputDialog(QDialog):
     
-    def __init__(self, initial_text='', parent=None, is_video=True, video_anno_json=None):
+    def __init__(self, initial_text='', parent=None, is_video=True, video_anno_json=None, ann_id=None):
         super().__init__(parent)
         self.setWindowTitle('请输入语言标注')
         self.is_video = is_video
@@ -38,14 +38,33 @@ class TextInputDialog(QDialog):
         if not is_video:
             self.prim_title = QLabel('请选择语言标注:', self)
             self.prim_select = QComboBox()
-            self.prim_select.addItems([i for i in video_anno_json.keys() if not video_anno_json[i]])
+            self.prim_select.addItems([i for i in video_anno_json.keys() if video_anno_json[i] is None])
+            
+            initial_action = None
+            for i in video_anno_json.keys():
+                if video_anno_json[i] is not None and video_anno_json[i] == ann_id:
+                    initial_action = i
+                    break
+            if initial_action and len(initial_action) > 0:
+                self.prim_select.addItems([initial_action])
+                self.prim_select.setCurrentText(initial_action)
+            else:
+                self.prim_select.setCurrentIndex(-1)
+            
             self.mode_title = QLabel('请选择原子动作:', self)
             self.mode_select = QComboBox()
             self.mode_select.addItems(['移动手臂','推物体','拉物体','放下物体','抓起物体','按压物体','旋转物体'])
+            self.mode_select.setCurrentIndex(0)
             self.language_edit = QTextEdit()
             self.language_title = QLabel('请确认语言标注:', self)
             self.language_title.hide()
-            self.language_edit.hide()
+            if initial_text is not None and len(initial_text) > 0:
+                self.language_edit.setText(initial_text)
+            else:
+                self.language_edit.hide()
+                self.language_edit.setText('')
+            
+            self.language_edit.setFixedHeight(100)
             self.prim_select.currentIndexChanged.connect(self.language_select)
             self.main_layout.addWidget(self.language_edit, 2, 1)
             self.main_layout.addWidget(self.language_title, 2, 0)
@@ -73,6 +92,12 @@ class TextInputDialog(QDialog):
     def get_prim(self):
         if not self.is_video:
             return self.mode_select.currentText()
+        else:
+            return ''
+    
+    def get_select_lang(self):
+        if not self.is_video:
+            return self.prim_select.currentText()
         else:
             return ''
     
@@ -1075,7 +1100,6 @@ class VideoPlayer(QWidget):
         # check if the frame number has keyframe
         if self.video_list[self.cur_video_idx-1] in self.keyframes and frame_number in self.keyframes[self.video_list[self.cur_video_idx-1]]:
             keyframe_type = self.keyframes[self.video_list[self.cur_video_idx-1]][frame_number]
-            print(keyframe_type)
             keyframe_type = '开始' if keyframe_type.lower() == 'start' else '结束'
             self.frame_position_label.setText(f"帧: {frame_number+1}({keyframe_type})")
         else:
@@ -1556,21 +1580,29 @@ class VideoPlayer(QWidget):
             return
 
         # load the cached description
-        anno_loc = [i for i in key_pairs if i[0] <= frame_number <= i[1] and i[0] != i[1]]
+        anno_loc = [(idx, i) for idx, i in enumerate(key_pairs) if i[0] <= frame_number <= i[1] and i[0] != i[1]]
+        if (0, 0) in self.lang_anno[self.video_list[self.cur_video_idx-1]]:
+            anno_loc = [(i[0]-1, i[1]) for i in anno_loc]
+        
         if len(anno_loc) == 0:
             self.smart_message('请移动到所在区域的起止帧之间')
             return
-        anno_loc = anno_loc[0]
+        anno_id, anno_loc = anno_loc[0]
         
         if self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc] is not None:
             cached_lang, prim = self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc]
         else:
             cached_lang, prim = '', ''
         # Create a dialog to get the description from the user
-        dialog = TextInputDialog(cached_lang, self, False, self.video_anno_list[self.video_list[self.cur_video_idx-1]])
+        dialog = TextInputDialog(cached_lang, self, False, self.video_anno_list[self.video_list[self.cur_video_idx-1]], ann_id=anno_id)
+        select_lang = dialog.get_select_lang()
         if dialog.exec_() == QDialog.Accepted:
+            if len(select_lang) > 0:
+                self.video_anno_list[self.video_list[self.cur_video_idx-1]][select_lang] = None
             cached_lang = dialog.get_text()
             prim = dialog.get_prim()
+            select_lang = dialog.get_select_lang()
+            self.video_anno_list[self.video_list[self.cur_video_idx-1]][select_lang] = anno_id
             self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc] = (cached_lang, prim)
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {cached_lang}")
         else:

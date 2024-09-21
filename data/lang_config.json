@@ -1,34 +1,34 @@
 {
     "/mnt/hwfile/OpenRobotLab/wangziqin/data/oxe/example_data/berkeley_cable_routing/0.mp4": {
-        "1移动到最下面的抽屉处": false,
-        "1拿起rxbar巧克力": false,
-        "1移到柜台的顶部": false,
-        "1将rxbar巧克力放在柜台上": false,
-        "1移动到rxbar巧克力的顶部": false,
-        "1把最下面的抽屉拉到柜台外面": false
+        "1移动到最下面的抽屉处": null,
+        "1拿起rxbar巧克力": null,
+        "1移到柜台的顶部": null,
+        "1将rxbar巧克力放在柜台上": null,
+        "1移动到rxbar巧克力的顶部": null,
+        "1把最下面的抽屉拉到柜台外面": null
     },
     "/mnt/hwfile/OpenRobotLab/wangziqin/data/oxe/example_data/bridge_dataset/0.mp4": {
-        "2移动到最下面的抽屉处": false,
-        "2拿起rxbar巧克力": false,
-        "2移到柜台的顶部": false,
-        "2将rxbar巧克力放在柜台上": false,
-        "2移动到rxbar巧克力的顶部": false,
-        "2把最下面的抽屉拉到柜台外面": false
+        "2移动到最下面的抽屉处": null,
+        "2拿起rxbar巧克力": null,
+        "2移到柜台的顶部": null,
+        "2将rxbar巧克力放在柜台上": null,
+        "2移动到rxbar巧克力的顶部": null,
+        "2把最下面的抽屉拉到柜台外面": null
     },
     "/mnt/hwfile/OpenRobotLab/wangziqin/data/oxe/example_data/columbia_cairlab_pusht_real/0.mp4": {
-        "3移动到最下面的抽屉处": false,
-        "3拿起rxbar巧克力": false,
-        "3移到柜台的顶部": false,
-        "3将rxbar巧克力放在柜台上": false,
-        "3移动到rxbar巧克力的顶部": false,
-        "3把最下面的抽屉拉到柜台外面": false
+        "3移动到最下面的抽屉处": null,
+        "3拿起rxbar巧克力": null,
+        "3移到柜台的顶部": null,
+        "3将rxbar巧克力放在柜台上": null,
+        "3移动到rxbar巧克力的顶部": null,
+        "3把最下面的抽屉拉到柜台外面": null
     },
     "/mnt/hwfile/OpenRobotLab/wangziqin/data/oxe/example_data/berkeley_autolab_ur5/0.mp4": {
-        "4移动到最下面的抽屉处": false,
-        "4拿起rxbar巧克力": false,
-        "4移到柜台的顶部": false,
-        "4将rxbar巧克力放在柜台上": false,
-        "4移动到rxbar巧克力的顶部": false,
-        "4把最下面的抽屉拉到柜台外面": false
+        "4移动到最下面的抽屉处": null,
+        "4拿起rxbar巧克力": null,
+        "4移到柜台的顶部": null,
+        "4将rxbar巧克力放在柜台上": null,
+        "4移动到rxbar巧克力的顶部": null,
+        "4把最下面的抽屉拉到柜台外面": null
     }
 }
