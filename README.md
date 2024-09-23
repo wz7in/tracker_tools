@@ -20,19 +20,23 @@ pip install -e .
 wget -P checkpoints https://huggingface.co/facebook/cotracker/resolve/main/cotracker2.pth
 ```
 
-## Usage
+## Annotation Files
 ```bash
-python main.py --mode <mode> --config <config_file> --device <device>
+prepare a file named 'lang_config.json' in folder data, which contains the following information:
+{
+    'video_path':
+    {
+        'instruction': 'global instruction',
+        'instructionC': 'global instruction in Chinese',
+        'task_steps': 'clip description options',
+        'task_stepsC': 'clip description options in Chinese',
+        'action_steps': 'primtive action description options',
+        'action_stepsC' : 'primtive action description options in Chinese'
+   }
+}
 ```
 
-<!-- ## Mode
-- `tap`: Track any number points in a video **(no more than 20 points)**, you can add points by clicking on the selected frame, and finish by just close the window, as the following demo:
-<div align=center>
-<img src="demo/tap_in.png" width="45%" align="center" style="padding:30px"> <img src="demo/tap.gif" width="34%" align="center">
-</div>
-
-
-- `mask`: Track any objects in a video by mask, you can add mask by drawing on the selected frame, you can click left mouse button to add positive points, and right mouse button to add negative points, and finish by just close the window, as the following demo:
-<div align=center>
-<img src="demo/sam_in.png" width="45%" align="center" style="padding:30px"> <img src="demo/sam.gif" width="34%" align="center">
-</div> -->
+## Usage
+```bash
+python gui.py
+```

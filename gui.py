@@ -32,10 +32,19 @@ class TextInputDialog(QDialog):
         self.main_layout = QGridLayout(self)
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         
+        # global_instruction = video_anno_json['instruction']
+        global_instruction_C = video_anno_json['instruction_C']
+        
+        # clip_lang_options = video_anno_json['task_steps']
+        clip_lang_C_options = video_anno_json['task_steps_C']
+        
+        # primtive_action_options = video_anno_json['action_steps']
+        primtive_action_options_C = video_anno_json['action_steps_C']
+        
         if not is_video:
             self.prim_title = QLabel('请选择语言标注:', self)
             self.prim_select = QComboBox()
-            self.prim_select.addItems([i for i in video_anno_json.keys() if video_anno_json[i] is None])
+            self.prim_select.addItems([i for i in clip_lang_C_options.keys() if clip_lang_C_options[i] is None])
             
             initial_action = None
             for i in video_anno_json.keys():
@@ -50,7 +59,7 @@ class TextInputDialog(QDialog):
             
             self.mode_title = QLabel('请选择原子动作:', self)
             self.mode_select = QComboBox()
-            self.mode_select.addItems(['移动手臂','推物体','拉物体','放下物体','抓起物体','按压物体','旋转物体'])
+            self.mode_select.addItems(primtive_action_options_C)
             self.mode_select.setCurrentIndex(0)
             self.language_edit = QTextEdit()
             self.language_title = QLabel('请确认语言标注:', self)
@@ -73,6 +82,7 @@ class TextInputDialog(QDialog):
         else:
             self.text_title = QLabel('请输入语言标注:', self)
             self.text_input = QLineEdit(self)
+            self.text_input.setText(global_instruction_C if initial_text is None or len(initial_text) == 0 else initial_text)
             self.text_input.setFixedSize(300,20)
             self.text_input.setText(initial_text)
             self.main_layout.addWidget(self.text_title, 0, 0)
@@ -1616,11 +1626,11 @@ class VideoPlayer(QWidget):
         select_lang = dialog.get_select_lang()
         if dialog.exec_() == QDialog.Accepted:
             if len(select_lang) > 0:
-                self.video_anno_list[self.video_list[self.cur_video_idx-1]][select_lang] = None
+                self.video_anno_list[self.video_list[self.cur_video_idx-1]]['instructionC'][select_lang] = None
             cached_lang = dialog.get_text()
             prim = dialog.get_prim()
             select_lang = dialog.get_select_lang()
-            self.video_anno_list[self.video_list[self.cur_video_idx-1]][select_lang] = anno_id
+            self.video_anno_list[self.video_list[self.cur_video_idx-1]]['instructionC'][select_lang] = anno_id
             self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc] = (cached_lang, prim)
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {cached_lang}")
         else:
