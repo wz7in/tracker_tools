@@ -15,14 +15,11 @@ from client_utils import request_sam, request_cotracker, request_video
 import numpy as np
 
 def load_anno_file(anno_file, out_file):
-    # with open(anno_file, 'r') as f:
-    #     video_list = f.readlines()
-    #     video_list = [x.strip() for x in video_list]
     video_anno = json.load(open(anno_file, 'r'))
     if os.path.exists(out_file):
         anno = pickle.load(open(out_file, 'rb'))
     else:
-        anno = {}    
+        anno = {}
     return sorted(list(video_anno.keys())), video_anno, anno
 
 class TextInputDialog(QDialog):
@@ -167,10 +164,6 @@ class VideoPlayer(QWidget):
         self.load_button = QPushButton("加载视频", self)
         self.load_button.clicked.connect(self.load_video_async)
         video_load_button_layout.addWidget(self.load_button)
-        # Load video button faster
-        # self.load_button_fast = QPushButton("快速加载视频", self)
-        # self.load_button_fast.clicked.connect(self.load_video_all)
-        # video_load_button_layout.addWidget(self.load_button_fast)
         # Play button
         self.play_button = QPushButton("播放", self)
         self.play_button.setCheckable(True)
@@ -214,7 +207,9 @@ class VideoPlayer(QWidget):
         self.anno_function_select.addItem('插值模型')
         # mode select button
         self.button_param_select = QComboBox()
-        self.button_param_select.addItem('视频模式')
+        self.button_param_select.addItem('双向视频模式')
+        self.button_param_select.addItem('前向视频模式')
+        self.button_param_select.addItem('反向视频模式')
         self.button_param_select.addItem('单帧模式')
         # tracking point numbers displayer in interpolation mode
         self.track_point_num_label = QLabel(self)
@@ -307,7 +302,7 @@ class VideoPlayer(QWidget):
         self.control_button_layout.addWidget(self.remove_frame_button)
         # save button
         self.save_button = QPushButton("保存标注", self)
-        self.save_button.clicked.connect(self.load_and_save_result)
+        self.save_button.clicked.connect(self.save_annotation)
         self.control_button_layout.addWidget(self.save_button)
         self.toolbar_layout.addLayout(self.control_button_layout)
 
@@ -423,6 +418,11 @@ class VideoPlayer(QWidget):
         self.key_frame_mode = 'start'
         self.requesting_item = None
         self.threadpool = None
+        
+        ##############################################################
+        #################### Load saved anno files ###################
+        ##############################################################
+        self.load_annotation()
         
     def pre_sam_object(self):
         if self.sam_object_id[self.progress_slider.value()] > 0:
@@ -643,7 +643,7 @@ class VideoPlayer(QWidget):
         cotracker_thread = CoTrackerThread(self, sam_config, co_tracker_config)
         return cotracker_thread
     
-    def load_and_save_result(self):
+    def save_annotation(self):
         lang_res, sam_res, track_res = dict(), dict(), dict()
         #################### parse video language annotation ####################
         if (0, 0) in self.lang_anno[self.video_list[self.cur_video_idx-1]] and self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] != '':
@@ -686,10 +686,14 @@ class VideoPlayer(QWidget):
         self.all_anno[self.video_list[self.cur_video_idx-1]]['lang'] = lang_res
         self.all_anno[self.video_list[self.cur_video_idx-1]]['sam'] = sam_res
         self.all_anno[self.video_list[self.cur_video_idx-1]]['track'] = track_res
+        self.all_anno[self.video_list[self.cur_video_idx-1]]['video'] = self.video_cache[self.video_list[self.cur_video_idx-1]]
         
         pickle.dump(self.all_anno, open(args.out_file, 'wb'))
         self.smart_message("保存成功!")
     
+    def load_annotation(self):
+        pass
+        
     def get_anno_result(self):
         if self.anno_function_select.currentText() == '分割模型':
             self.get_sam_async()
@@ -702,7 +706,9 @@ class VideoPlayer(QWidget):
         
         if self.anno_function_select.currentText() == '分割模型':
             self.button_param_select.clear()
-            self.button_param_select.addItem('视频模式')
+            self.button_param_select.addItem('双向视频模式')
+            self.button_param_select.addItem('前向视频模式')
+            self.button_param_select.addItem('反向视频模式')
             self.button_param_select.addItem('单帧模式')
             self.sam_pre_button.show()
             self.sam_next_button.show()
@@ -1058,14 +1064,6 @@ class VideoPlayer(QWidget):
         self.update_frame(frame_number)
         self.cur_frame_idx = self.progress_slider.value()
         self.video_position_label.setText(f"帧: {self.cur_frame_idx+1}/{self.frame_count} | 视频: {self.cur_video_idx}/{len(self.video_list)}")
-
-        # self.pre_f_button.setDisabled(False)
-        # self.next_f_button.setDisabled(False)
-        
-        # if self.cur_frame_idx == 0:
-        #     self.pre_f_button.setDisabled(True)
-        # if self.cur_frame_idx == self.frame_count-1:
-        #     self.next_f_button.setDisabled(True)
         
         self.sam_object_id[self.cur_frame_idx] = 0
         self.sam_obj_pos_label.setText(f"标注物体: {self.sam_object_id[self.cur_frame_idx]+1}/{len(self.tracking_points_sam[self.video_list[self.cur_video_idx-1]][self.cur_frame_idx])}")
@@ -1084,8 +1082,6 @@ class VideoPlayer(QWidget):
             self.clip_lang_input.clear()
             
     def toggle_playback(self):
-        # if self.cap is None:
-        #     return
         if self.play_button.isChecked():
             self.play_button.setText("暂停")
             self.current_frame = self.progress_slider.value()
@@ -1141,23 +1137,24 @@ class VideoPlayer(QWidget):
         
         if self.button_param_select.currentText() == '单帧模式':
             is_video = False
-        elif self.button_param_select.currentText() == '视频模式':
+            direction = None
+        elif '视频' in self.button_param_select.currentText():
             is_video = True
+            if '双向' in self.button_param_select.currentText():
+                direction = 'bidirection'
+            elif '前向' in self.button_param_select.currentText():
+                direction = 'forward'
+            elif '反向' in self.button_param_select.currentText():
+                direction = 'backward'
 
         select_frame = self.progress_slider.value()
-        try:
-            frame_pts = tracking_points[select_frame]
-        except:
-            self.smart_message('请先加载视频！')
-            return -1
+        frame_pts = tracking_points[select_frame]
         
-        has_pos_points = False
         # select all objects
         for obj_id, obj_pts in enumerate(frame_pts):
             positive_points, negative_points, labels = [], [], []
             if obj_pts['raw_pos'] != []:
                 positive_points.extend([[pt.x(), pt.y()] for pt in obj_pts['raw_pos']])
-                has_pos_points = True
             if obj_pts['raw_neg'] != []:
                 negative_points.extend([[pt.x(), pt.y()] for pt in obj_pts['raw_neg']])
             if (obj_pts['raw_pos'] != []) or (obj_pts['raw_neg'] != []):
@@ -1166,12 +1163,9 @@ class VideoPlayer(QWidget):
             positive_points_all[obj_id] = positive_points
             negative_points_all[obj_id] = negative_points
             labels_all[obj_id] = labels
-
-        if not has_pos_points:
-            self.smart_message('请选择至少一个点')
-            return -1
         
         self.sam_config['is_video'] = is_video
+        self.sam_config['direction'] = direction
         self.sam_config['positive_points'] = positive_points_all
         self.sam_config['negative_points'] = negative_points_all
         self.sam_config['labels'] = labels_all
@@ -1204,6 +1198,17 @@ class VideoPlayer(QWidget):
             self.smart_message("请先加载视频!")
             return
         
+        curr_frame = self.progress_slider.value()
+        tracking_points = self.tracking_points_sam[self.video_list[self.cur_video_idx-1]]
+        
+        if curr_frame not in tracking_points or len(tracking_points[curr_frame]) == 0:
+            self.smart_message("请先标注!")
+            return
+        
+        if len(tracking_points[curr_frame][0]['raw_pos']) == 0:
+            self.smart_message("请先标注!")
+            return
+        
         self.progress = QProgressDialog("请等待，正在请求分割模型...", None, 0, 0, self)
         self.progress.setWindowModality(Qt.WindowModal)
         self.progress.setCancelButton(None)
@@ -1224,13 +1229,26 @@ class VideoPlayer(QWidget):
             return -1
         
         frame_id = self.sam_config['select_frame']
-
-        mask_images = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])  
-        self.sam_res[self.video_list[self.cur_video_idx-1]][frame_id:frame_id+mask_images.shape[0]] = mask_images
+        direction = self.sam_config['direction']
+        mask_images = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])
         
         if self.anno[self.video_list[self.cur_video_idx-1]]['sam'] is None:
+            self.anno[self.video_list[self.cur_video_idx-1]]['sam'] = np.zeros((masks.shape[0], self.frame_count, *masks[0,0].shape))  
+        elif self.anno[self.video_list[self.cur_video_idx-1]]['sam'].shape[0] != masks.shape[0]:
             self.anno[self.video_list[self.cur_video_idx-1]]['sam'] = np.zeros((masks.shape[0], self.frame_count, *masks[0,0].shape))
-        self.anno[self.video_list[self.cur_video_idx-1]]['sam'][:, frame_id:frame_id+mask_images.shape[0]] = masks
+        
+        if direction == 'backward':
+            assert masks.shape[1] == frame_id + 1, f"masks.shape[1]: {masks.shape[1]}, frame_id: {frame_id}"
+            self.anno[self.video_list[self.cur_video_idx-1]]['sam'][:, :frame_id+1] = masks[:, ::-1]
+            self.sam_res[self.video_list[self.cur_video_idx-1]][:frame_id+1] = mask_images[::-1]
+        elif direction == 'bidirection':
+            assert masks.shape[1] == self.frame_count, f"masks.shape[1]: {masks.shape[1]}, frame_count: {self.frame_count}"
+            self.sam_res[self.video_list[self.cur_video_idx-1]] = mask_images
+            self.anno[self.video_list[self.cur_video_idx-1]]['sam'][:] = masks
+        else:
+            self.sam_res[self.video_list[self.cur_video_idx-1]][frame_id:frame_id+mask_images.shape[0]] = mask_images
+            self.anno[self.video_list[self.cur_video_idx-1]]['sam'][:, frame_id:frame_id+mask_images.shape[0]] = masks
+        
         return 1
     
     def tracker_callback(self, res):
@@ -1638,7 +1656,7 @@ if __name__ == "__main__":
     # load annotation file
     args = argparse.ArgumentParser()
     args.add_argument('--anno_file', type=str, default='./data/lang_config.json')
-    args.add_argument('--out_file', type=str, default='./data/annotation.json')
+    args.add_argument('--out_file', type=str, default='./data/annotation.pkl')
     args = args.parse_args()
     
     app = QApplication(sys.argv)

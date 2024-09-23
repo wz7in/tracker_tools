@@ -10,3 +10,5 @@ videos
 **/*.pth
 **/__pycache__/
 !co-tracker/cotracker/utils/visualizer.py
+**/*.pkl
+**/*.json

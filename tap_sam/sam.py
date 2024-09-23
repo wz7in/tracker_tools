@@ -34,7 +34,7 @@ class Sam:
             colors = [color for _ in range(len(masks_list))]
         else:
             cmap = plt.get_cmap("tab10")
-            colors = [np.array([*cmap(i)[:3]]) for i in obj_id]
+            colors = [np.array([*cmap(int(i))[:3]]) for i in obj_id]
 
         mask_image = [torch.tensor(masks_list[i]).permute(2, 3, 1, 0).numpy() * (
             colors[i].reshape(1, 1, -1)[:, :, :, None]
@@ -55,7 +55,7 @@ class Sam:
             )
             
         text_scale = width / 800
-        assert video.shape[0] == mask_image[0].shape[0]
+        assert video.shape[0] == mask_image[0].shape[0], f"video shape: {video.shape[0]}, mask shape: {mask_image[0].shape[0]}"
         for i in range(video.shape[0]):      
             for obj_id in range(len(masks_list)):
                 mix_mask = masks_list[obj_id][i][0][:, :, None].repeat(3, axis=2)

@@ -14,17 +14,21 @@ def forward_sam(model_config):
     video_path = model_config["video_path"]
     is_video = model_config["is_video"]
     select_frame = model_config["select_frame"]
+    direction = model_config["direction"]
 
     temp_image_list_save_dir = video_path.rsplit(".", 1)[0].replace("lihao3", "_")
     video = extract_frames(video_path)
     if not is_video:
-        video = video[select_frame : select_frame + 1]
-        select_frame = 0
-    else:
-        video = video[select_frame : ]
-        select_frame = 0
+        video = video[select_frame:select_frame + 1]
+    elif direction == "forward":
+        video = video[select_frame:]     
+    elif direction == "backward":
+        video = video[:select_frame+1][::-1]
+    select_frame = 0
     
+    os.system(f"rm -rf {temp_image_list_save_dir}")
     save_multi_frames(video, temp_image_list_save_dir)
+    
     positive_points_dict = model_config["positive_points"]
     negative_points_dict = model_config["negative_points"]
     labels_dict = model_config["labels"]
@@ -42,14 +46,27 @@ def forward_sam(model_config):
     
         masks = model_sam(positive_points, labels, select_frame, obj_idx)
         mask_all.append(masks)
-    
+   
     mask_images = model_sam.get_mask_on_image(
-        mask_all, video, save_path=model_config["save_path"]
+        mask_all, video, save_path=model_config["save_path"], obj_id=list(positive_points_dict.keys())
     )
     os.system(f"rm -rf {temp_image_list_save_dir}")
     
     return mask_images, mask_all
 
+def bidirectional_sam(model_config):
+    model_config["direction"] = "forward"
+    mask_images_forward, masks_forward = forward_sam(model_config)
+    model_config["direction"] = "backward"
+    mask_images_backward, masks_backward = forward_sam(model_config)
+    
+    mask_image = mask_images_backward[::-1][:-1] + mask_images_forward
+    masks = []
+    for obj_id in range(len(masks_forward)):
+        masks.append(np.concatenate([masks_backward[obj_id][::-1][:-1], masks_forward[obj_id]], axis=0))
+    
+    return mask_image, masks
+        
 def forward_co_tracker(model_config):
     video_path = model_config["cotracker"]["video_path"]
     device = model_config["cotracker"]["device"]
@@ -124,7 +141,10 @@ def forward_co_tracker(model_config):
 def predict_sam_video():
     # get parameters
     model_config = json.loads(request.data)
-    mask_images, masks = forward_sam(model_config)
+    if model_config["direction"] == "bidirection":
+        mask_images, masks = bidirectional_sam(model_config)
+    else:
+        mask_images, masks = forward_sam(model_config)
     zip_io = io.BytesIO()
     with zipfile.ZipFile(zip_io, "w") as zf:
         with zf.open("mask_images.npy", "w") as f:
