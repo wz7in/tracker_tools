@@ -1,4 +1,0 @@
-/mnt/hwfile/OpenRobotLab/wangziqin/data/oxe/example_data/berkeley_cable_routing/0.mp4
-/mnt/hwfile/OpenRobotLab/wangziqin/data/oxe/example_data/bridge_dataset/0.mp4
-/mnt/hwfile/OpenRobotLab/wangziqin/data/oxe/example_data/columbia_cairlab_pusht_real/0.mp4
-/mnt/hwfile/OpenRobotLab/wangziqin/data/oxe/example_data/berkeley_autolab_ur5/0.mp4

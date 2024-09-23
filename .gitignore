@@ -12,3 +12,4 @@ videos
 !co-tracker/cotracker/utils/visualizer.py
 **/*.pkl
 **/*.json
+**/*.txt
