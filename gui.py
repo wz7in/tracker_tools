@@ -14,13 +14,18 @@ import yaml
 from client_utils import request_sam, request_cotracker, request_video
 import numpy as np
 
+ROOT_DIR = '/mnt/hwfile/OpenRobotLab/wangziqin/data/rh20t/'
+
 def load_anno_file(anno_file, out_file):
-    video_anno = json.load(open(anno_file, 'r'))
+    if anno_file.endswith('.json'):
+        video_anno = json.load(open(anno_file, 'r'))
+    elif anno_file.endswith('.npy'):
+        video_anno = np.load(anno_file, allow_pickle=True).item()
     if os.path.exists(out_file):
         anno = pickle.load(open(out_file, 'rb'))
     else:
         anno = {}
-    return sorted(list(video_anno.keys())), video_anno, anno
+    return sorted(list(video_anno.keys()))[1:2], video_anno, anno
 
 class TextInputDialog(QDialog):
     
@@ -32,23 +37,19 @@ class TextInputDialog(QDialog):
         self.main_layout = QGridLayout(self)
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         
-        # global_instruction = video_anno_json['instruction']
-        global_instruction_C = video_anno_json['instruction_C']
-        
-        # clip_lang_options = video_anno_json['task_steps']
-        clip_lang_C_options = video_anno_json['task_steps_C']
-        
-        # primtive_action_options = video_anno_json['action_steps']
-        primtive_action_options_C = video_anno_json['action_steps_C']
-        
         if not is_video:
+            global_instruction_C = video_anno_json['instructionC']
+            clip_lang_C_options = video_anno_json['clip_langC']
+            primitive_action_options_C = [i[1] for i in video_anno_json['primitive_action']]
+            
             self.prim_title = QLabel('请选择语言标注:', self)
             self.prim_select = QComboBox()
             self.prim_select.addItems([i for i in clip_lang_C_options.keys() if clip_lang_C_options[i] is None])
+            self.prim_select.addItems(['空'])
             
             initial_action = None
-            for i in video_anno_json.keys():
-                if video_anno_json[i] is not None and video_anno_json[i] == ann_id:
+            for i in clip_lang_C_options.keys():
+                if clip_lang_C_options[i] is not None and clip_lang_C_options[i] == ann_id:
                     initial_action = i
                     break
             if initial_action and len(initial_action) > 0:
@@ -59,7 +60,7 @@ class TextInputDialog(QDialog):
             
             self.mode_title = QLabel('请选择原子动作:', self)
             self.mode_select = QComboBox()
-            self.mode_select.addItems(primtive_action_options_C)
+            self.mode_select.addItems(primitive_action_options_C)
             self.mode_select.setCurrentIndex(0)
             self.language_edit = QTextEdit()
             self.language_title = QLabel('请确认语言标注:', self)
@@ -88,8 +89,7 @@ class TextInputDialog(QDialog):
             self.main_layout.addWidget(self.text_title, 0, 0)
             self.main_layout.addWidget(self.text_input, 0, 1)
             self.main_layout.addWidget(self.button_box, 1, 0, 1, 2)
-        
-        
+                
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         
@@ -199,7 +199,7 @@ class VideoPlayer(QWidget):
         
         # Auto-annotation function title layout
         function_title_layout = QHBoxLayout()
-        function_title = QLabel("自动标注工具区", self)
+        function_title = QLabel("分割标注工具区", self)
         function_title.setAlignment(Qt.AlignLeft)  # Left align the title
         function_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         function_title_layout.addWidget(function_title)
@@ -215,6 +215,7 @@ class VideoPlayer(QWidget):
         self.anno_function_select.addItem('分割模型')
         self.anno_function_select.addItem('跟踪模型')
         self.anno_function_select.addItem('插值模型')
+        self.anno_function_select.hide()
         # mode select button
         self.button_param_select = QComboBox()
         self.button_param_select.addItem('双向视频模式')
@@ -284,6 +285,7 @@ class VideoPlayer(QWidget):
         self.vis_tracker = QRadioButton("跟踪结果视频", self)
         vis_button_layout.addWidget(self.vis_tracker)
         self.toolbar_layout.addLayout(vis_button_layout)
+        self.vis_tracker.hide()
 
         # edit mode are layout
         annotation_title_layout = QHBoxLayout()
@@ -433,6 +435,9 @@ class VideoPlayer(QWidget):
         #################### Load saved anno files ###################
         ##############################################################
         self.load_annotation()
+        for i in self.video_list:
+            if i in self.all_anno and self.all_anno[i]['video'] is not None:
+                self.video_cache[i] = self.all_anno[i]['video']
         
     def pre_sam_object(self):
         if self.sam_object_id[self.progress_slider.value()] > 0:
@@ -562,9 +567,10 @@ class VideoPlayer(QWidget):
         else:
             try:
                 self.requesting_item = self.video_list[self.cur_video_idx-1]
-                video = request_video(self.video_list[self.cur_video_idx-1])
+                video = request_video(os.path.join(ROOT_DIR, self.video_list[self.cur_video_idx-1]))
                 self.requesting_item = None
             except Exception as e:
+                self.requesting_item = None
                 return None
             if video is None:
                 return None
@@ -574,7 +580,7 @@ class VideoPlayer(QWidget):
     def request_video_by_name(self, name):
         if name not in self.video_cache or self.video_cache[name] is None:
             self.requesting_item = name
-            video = request_video(name)
+            video = request_video(os.path.join(ROOT_DIR, name))
             self.requesting_item = None
         return video, name
     
@@ -965,7 +971,6 @@ class VideoPlayer(QWidget):
                 self.smart_message("视频加载失败，请检查网络设置")
             else:
                 self.progress.close()
-                # self.smart_message("视频加载完成!")
         else:     
             self.video_thread = self.request_video_async()
             self.video_thread.finished.connect(self.load_video_callback)
@@ -975,11 +980,10 @@ class VideoPlayer(QWidget):
         if video is None:
             return -1
         
-        self.sam_config['video_path'] = self.video_list[self.cur_video_idx-1]
-        self.co_tracker_config['video_path'] = self.video_list[self.cur_video_idx-1]
+        self.sam_config['video_path'] = os.path.join(ROOT_DIR, self.video_list[self.cur_video_idx-1])
+        self.co_tracker_config['video_path'] = os.path.join(ROOT_DIR, self.video_list[self.cur_video_idx-1])
         self.frame_count = video.shape[0]
         self.sam_object_id = [0] * self.frame_count
-        has_interpolation = False
         
         if self.video_list[self.cur_video_idx-1] not in self.lang_anno:
             self.lang_anno[self.video_list[self.cur_video_idx-1]] = dict()
@@ -1036,6 +1040,13 @@ class VideoPlayer(QWidget):
             self.mark_keyframe()
             self.selected_keyframe = self.progress_slider.value()
             self.remove_keyframe()
+        
+        # load global language annotation
+        video_anno_json = self.video_anno_list[self.video_list[self.cur_video_idx-1]]
+        global_instruction_C = video_anno_json['instructionC'] if 'instructionC' in video_anno_json else ''
+        if (0, 0) not in self.lang_anno[self.video_list[self.cur_video_idx-1]] or self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] == '':
+            self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] = global_instruction_C
+        self.video_lang_input.setText(self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)])
 
         return 1
             
@@ -1277,6 +1288,10 @@ class VideoPlayer(QWidget):
     def get_tap_async(self):
         if self.video_list[self.cur_video_idx-1] not in self.ori_video:
             self.smart_message("请先加载视频！")
+            return
+        
+        if self.progress_slider.value() > 100:
+            self.smart_message("请务必在0-100帧的位置进行选点!")
             return
         
         self.progress = QProgressDialog("请等待，正在请求Tracker结果...", None, 0, 0, self)
@@ -1625,12 +1640,18 @@ class VideoPlayer(QWidget):
         dialog = TextInputDialog(cached_lang, self, False, self.video_anno_list[self.video_list[self.cur_video_idx-1]], ann_id=anno_id)
         select_lang = dialog.get_select_lang()
         if dialog.exec_() == QDialog.Accepted:
-            if len(select_lang) > 0:
-                self.video_anno_list[self.video_list[self.cur_video_idx-1]]['instructionC'][select_lang] = None
+            if select_lang == '空':
+                select_gt_id = [i for i in self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'] if self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'][i] == anno_id]
+                if len(select_gt_id) > 0:
+                    self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_gt_id[0]] = None
+            elif len(select_lang) > 0:
+                self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_lang] = None
+            
             cached_lang = dialog.get_text()
             prim = dialog.get_prim()
             select_lang = dialog.get_select_lang()
-            self.video_anno_list[self.video_list[self.cur_video_idx-1]]['instructionC'][select_lang] = anno_id
+            if select_lang != '空':
+                self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_lang] = anno_id
             self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc] = (cached_lang, prim)
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {cached_lang}")
         else:
@@ -1665,7 +1686,7 @@ if __name__ == "__main__":
     
     # load annotation file
     args = argparse.ArgumentParser()
-    args.add_argument('--anno_file', type=str, default='./data/lang_config.json')
+    args.add_argument('--anno_file', type=str, default='./data/ann_all_new.npy')
     args.add_argument('--out_file', type=str, default='./data/annotation.pkl')
     args = args.parse_args()
     

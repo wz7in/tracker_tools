@@ -13,3 +13,4 @@ videos
 **/*.pkl
 **/*.json
 **/*.txt
+**/*.npy
