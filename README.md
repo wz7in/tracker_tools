@@ -28,10 +28,9 @@ prepare a file named 'lang_config.json' in folder data, which contains the follo
     {
         'instruction': 'global instruction',
         'instructionC': 'global instruction in Chinese',
-        'task_steps': 'clip description options',
-        'task_stepsC': 'clip description options in Chinese',
-        'action_steps': 'primtive action description options',
-        'action_stepsC' : 'primtive action description options in Chinese'
+        'clip_lang': 'clip description options',
+        'clip_langC': 'clip description options in Chinese',
+        'primitive_action': [('action desciption', 'action desciption in Chinese'), ...],
    }
 }
 ```
