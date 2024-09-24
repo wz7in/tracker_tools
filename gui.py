@@ -1,5 +1,5 @@
 import sys
-import os, time
+import os
 import json
 import argparse
 import pickle
@@ -25,7 +25,7 @@ def load_anno_file(anno_file, out_file):
         anno = pickle.load(open(out_file, 'rb'))
     else:
         anno = {}
-    return sorted(list(video_anno.keys()))[1:2], video_anno, anno
+    return sorted(list(video_anno.keys())), video_anno, anno
 
 class TextInputDialog(QDialog):
     
@@ -702,7 +702,9 @@ class VideoPlayer(QWidget):
         self.all_anno[self.video_list[self.cur_video_idx-1]]['lang'] = lang_res
         self.all_anno[self.video_list[self.cur_video_idx-1]]['sam'] = sam_res
         self.all_anno[self.video_list[self.cur_video_idx-1]]['track'] = track_res
-        self.all_anno[self.video_list[self.cur_video_idx-1]]['video'] = self.video_cache[self.video_list[self.cur_video_idx-1]]
+        
+        for i in self.video_cache:
+            self.all_anno[i]['video'] = self.video_cache[i]
         
         pickle.dump(self.all_anno, open(args.out_file, 'wb'))
         self.smart_message("保存成功!")
