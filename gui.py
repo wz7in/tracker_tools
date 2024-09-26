@@ -13,6 +13,8 @@ from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread, QThreadPool, py
 import yaml
 from client_utils import request_sam, request_cotracker, request_video
 import numpy as np
+import torch
+import matplotlib.pyplot as plt
 
 ROOT_DIR = '/mnt/hwfile/OpenRobotLab/wangziqin/data/rh20t/'
 
@@ -25,7 +27,7 @@ def load_anno_file(anno_file, out_file):
         anno = pickle.load(open(out_file, 'rb'))
     else:
         anno = {}
-    return sorted(list(video_anno.keys())), video_anno, anno
+    return sorted(list(video_anno.keys()))[:12], video_anno, anno
 
 class TextInputDialog(QDialog):
     
@@ -81,6 +83,7 @@ class TextInputDialog(QDialog):
             self.main_layout.addWidget(self.prim_select, 0, 1)
             self.main_layout.addWidget(self.button_box, 3, 0, 1, 2)
         else:
+            global_instruction_C = video_anno_json['instructionC']
             self.text_title = QLabel('请输入语言标注:', self)
             self.text_input = QLineEdit(self)
             self.text_input.setText(global_instruction_C if initial_text is None or len(initial_text) == 0 else initial_text)
@@ -114,11 +117,48 @@ class TextInputDialog(QDialog):
             self.language_edit.show()
             self.language_edit.setText(self.prim_select.currentText())
 
+class DictQueue():
+    def __init__(self):
+        self.max_size = 10
+        self.queue = []
+        self.memory = {}
+    
+    def pop(self):
+        key = self.queue.pop(0)
+        value = self.memory[key]
+        del self.memory[key]
+        return key, value
+    
+    def get(self, key):
+        if key not in self.memory:
+            return None
+        return self.memory[key]
+    
+    def get_locate(self, key):
+        return self.queue.index(key)
+    
+    def get_last(self):
+        return self.queue[-1]
+    
+    def __len__(self):
+        return len(self.queue)
+    
+    def add(self, key, value):
+        self.memory[key] = value
+        self.queue.append(key)
+        if len(self.queue) > self.max_size:
+            self.pop()
+    
+    def clear(self):
+        self.queue = []
+        self.memory = {}
+    
+
 class VideoPlayer(QWidget):
     def __init__(self, args):
         self.video_list, self.video_anno_list, self.all_anno = load_anno_file(args.anno_file, args.out_file)
         super().__init__()
-        self.setWindowTitle("浦器实验室视频标注工具")
+        self.setWindowTitle("视频标注工具")
         ###########################################################
         #################### Main Area Layout ####################
         ###########################################################
@@ -203,11 +243,11 @@ class VideoPlayer(QWidget):
         function_title.setAlignment(Qt.AlignLeft)  # Left align the title
         function_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         function_title_layout.addWidget(function_title)
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("color: grey;")  # Set the same color as the title
-        function_title_layout.addWidget(line)
+        fline = QFrame(self)
+        fline.setFrameShape(QFrame.HLine)
+        fline.setFrameShadow(QFrame.Sunken)
+        fline.setStyleSheet("color: grey;")  # Set the same color as the title
+        function_title_layout.addWidget(fline)
         self.toolbar_layout.addLayout(function_title_layout)
         # Auto-annotation function selection layout
         anno_button_layout = QHBoxLayout()
@@ -234,8 +274,10 @@ class VideoPlayer(QWidget):
         self.track_mode_selector.hide()
         self.anno_function_select.currentIndexChanged.connect(self.update_function_select)
         # run button
-        click_action_button = QPushButton("运行", self)
-        click_action_button.clicked.connect(self.get_anno_result)
+        # click_action_button = QPushButton("运行", self)
+        click_action_button = QPushButton("保存SAM标注", self)
+        # click_action_button.clicked.connect(self.get_anno_result)
+        click_action_button.clicked.connect(self.save_sam_input)
         anno_button_layout.addWidget(self.anno_function_select)
         anno_button_layout.addWidget(self.button_param_select)
         anno_button_layout.addWidget(self.track_mode_selector)
@@ -263,15 +305,15 @@ class VideoPlayer(QWidget):
         
         # Visualization area layout
         annotation_title_layout = QHBoxLayout()
-        annotation_title = QLabel("标注及结果可视化区域", self)
-        annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
-        annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
-        annotation_title_layout.addWidget(annotation_title)
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("color: grey;")  # Set the same color as the title
-        annotation_title_layout.addWidget(line)
+        annotation_vis_title = QLabel("标注及结果可视化区域", self)
+        annotation_vis_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        annotation_vis_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+        annotation_title_layout.addWidget(annotation_vis_title)
+        visline = QFrame(self)
+        visline.setFrameShape(QFrame.HLine)
+        visline.setFrameShadow(QFrame.Sunken)
+        visline.setStyleSheet("color: grey;")  # Set the same color as the title
+        annotation_title_layout.addWidget(visline)
         self.toolbar_layout.addLayout(annotation_title_layout)
         # Visualization button layout
         vis_button_layout = QHBoxLayout()
@@ -293,11 +335,11 @@ class VideoPlayer(QWidget):
         annotation_title.setAlignment(Qt.AlignLeft)  # Left align the title
         annotation_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         annotation_title_layout.addWidget(annotation_title)
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("color: grey;")  # Set the same color as the title
-        annotation_title_layout.addWidget(line)
+        annoline = QFrame(self)
+        annoline.setFrameShape(QFrame.HLine)
+        annoline.setFrameShadow(QFrame.Sunken)
+        annoline.setStyleSheet("color: grey;")  # Set the same color as the title
+        annotation_title_layout.addWidget(annoline)
         self.toolbar_layout.addLayout(annotation_title_layout)
         # clear all button
         self.control_button_layout = QHBoxLayout()
@@ -313,8 +355,9 @@ class VideoPlayer(QWidget):
         self.remove_frame_button.clicked.connect(self.remove_frame_annotation)
         self.control_button_layout.addWidget(self.remove_frame_button)
         # save button
-        self.save_button = QPushButton("保存标注", self)
-        self.save_button.clicked.connect(self.save_annotation)
+        self.save_button = QPushButton("保存语言标注", self)
+        # self.save_button.clicked.connect(self.save_annotation)
+        self.save_button.clicked.connect(self.save_lang_anno)
         self.control_button_layout.addWidget(self.save_button)
         self.toolbar_layout.addLayout(self.control_button_layout)
 
@@ -325,11 +368,11 @@ class VideoPlayer(QWidget):
         lang_title.setAlignment(Qt.AlignLeft)  # Left align the title
         lang_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
         lang_title_layout.addWidget(lang_title)
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("color: grey;")  # Set the same color as the title
-        lang_title_layout.addWidget(line)
+        videoline = QFrame(self)
+        videoline.setFrameShape(QFrame.HLine)
+        videoline.setFrameShadow(QFrame.Sunken)
+        videoline.setStyleSheet("color: grey;")  # Set the same color as the title
+        lang_title_layout.addWidget(videoline)
         lang_layout.addLayout(lang_title_layout)
         # Video Language annotation show area
         self.video_lang_input = QTextEdit(self)
@@ -340,27 +383,68 @@ class VideoPlayer(QWidget):
         self.toolbar_layout.addLayout(lang_layout)
         
         # Video clip language annotation area 
-        lang_layout = QVBoxLayout()
+        clip_layout = QVBoxLayout()
         lang_title_layout = QHBoxLayout()
-        lang_title = QLabel("视频段语言标注展示区域", self)
-        lang_title.setAlignment(Qt.AlignLeft)  # Left align the title
-        lang_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
-        lang_title_layout.addWidget(lang_title)
-        line = QFrame(self)
-        line.setFrameShape(QFrame.HLine)
-        line.setFrameShadow(QFrame.Sunken)
-        line.setStyleSheet("color: grey;")  # Set the same color as the title
-        lang_title_layout.addWidget(line)
-        lang_layout.addLayout(lang_title_layout)
+        clip_title = QLabel("视频段语言标注展示区域", self)
+        clip_title.setAlignment(Qt.AlignLeft)  # Left align the title
+        clip_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+        lang_title_layout.addWidget(clip_title)
+        clipline = QFrame(self)
+        clipline.setFrameShape(QFrame.HLine)
+        clipline.setFrameShadow(QFrame.Sunken)
+        clipline.setStyleSheet("color: grey;")  # Set the same color as the title
+        lang_title_layout.addWidget(clipline)
+        clip_layout.addLayout(lang_title_layout)
         # Video clip Language annotation show area
         self.clip_lang_input = QTextEdit(self)
         self.clip_lang_input.setReadOnly(True)
         self.clip_lang_input.setFixedHeight(80)
         self.clip_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
-        lang_layout.addWidget(self.clip_lang_input)
-        self.toolbar_layout.addLayout(lang_layout)
+        clip_layout.addWidget(self.clip_lang_input)
+        self.toolbar_layout.addLayout(clip_layout)
         
-        # Tool tips area layout
+        # choose mode
+        mode = self.mode_choose()
+        if mode is None:
+            sys.exit()
+        
+        if mode == 'SAM标注':
+            # 删除语言标注区域
+            self.video_lang_input.hide()
+            self.clip_lang_input.hide()
+            clip_title.hide()
+            lang_title.hide()
+            clipline.hide()
+            videoline.hide()
+            # line.hide()
+            self.save_button.hide()
+            tips_items = ['A: 上一帧', 'D: 下一帧']
+        
+        elif mode == '语言标注':
+            visline.hide()
+            fline.hide()
+            click_action_button.hide()
+            self.sam_pre_button.hide()
+            self.sam_next_button.hide()
+            self.sam_obj_pos_label.hide()
+            self.anno_function_select.hide()
+            self.button_param_select.hide()
+            function_title.hide()
+            annotation_title.hide()
+            annotation_vis_title.hide()
+            annoline.hide()
+            self.vis_button.hide()
+            self.vis_ori.hide()
+            self.vis_sam.hide()
+            self.vis_tracker.hide()
+            self.track_point_num_label.hide()
+            self.track_mode_selector.hide()
+            self.clear_all_button.hide()
+            self.remove_last_button.hide()
+            self.remove_frame_button.hide()
+            tips_items = ['W: 标志开始帧','L: 添加段语言标注','S: 标记结束帧','删除: 删除标记帧','A: 上一帧','回车: 添加视频标注','D: 下一帧']
+            
+            
         self.tips_layout = QVBoxLayout()
         self.tips_title_layout = QHBoxLayout()
         tips_title = QLabel("关键帧快捷键", self)
@@ -375,7 +459,7 @@ class VideoPlayer(QWidget):
         self.tips_layout.addLayout(self.tips_title_layout)
         self.toolbar_layout.addLayout(self.tips_layout)
         self.tips_text_layout = QGridLayout()
-        tips_items = ['W: 标志开始帧','L: 添加段语言标注','S: 标记结束帧','删除: 删除标记帧','A: 上一帧','回车: 添加视频标注','D: 下一帧']
+        
         for i, item in enumerate(tips_items):
             tips_input = QTextEdit(self)
             tips_input.setText(item)
@@ -419,7 +503,7 @@ class VideoPlayer(QWidget):
         self.sam_res = dict()
         self.track_res = dict()
         self.lang_anno = dict()
-        self.video_cache = dict()
+        self.video_cache = DictQueue()
         self.max_point_num = dict()
         self.anno_mode = 'sam'
         self.cur_frame_idx = self.progress_slider.value()
@@ -429,16 +513,31 @@ class VideoPlayer(QWidget):
         self.edit_track_res = None
         self.key_frame_mode = 'start'
         self.requesting_item = None
-        self.threadpool = None
+        self.threadpool = QThreadPool()
+        self.sam_point_anno = dict()
+        self.lang_only_anno = dict()
         
-        ##############################################################
-        #################### Load saved anno files ###################
-        ##############################################################
-        self.load_annotation()
-        for i in self.video_list:
-            if i in self.all_anno and self.all_anno[i]['video'] is not None:
-                self.video_cache[i] = self.all_anno[i]['video']
         
+    def mode_choose(self):
+        # 在主窗口上直接弹出对话框，选择模式
+        mode_dialog = QDialog(self)
+        mode_dialog.setWindowTitle("选择模式")
+        mode_dialog.setFixedSize(300, 200)
+        mode_layout = QVBoxLayout()
+        mode_dialog.setLayout(mode_layout)
+        mode_select = QComboBox()
+        mode_select.addItem('SAM标注')
+        mode_select.addItem('语言标注')
+        # 返回选择的模式
+        mode_layout.addWidget(mode_select)
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        button_box.accepted.connect(mode_dialog.accept)
+        button_box.rejected.connect(mode_dialog.reject)
+        mode_layout.addWidget(button_box)
+        if mode_dialog.exec_() == QDialog.Accepted:
+            return mode_select.currentText()
+        return None
+    
     def pre_sam_object(self):
         if self.sam_object_id[self.progress_slider.value()] > 0:
             self.sam_object_id[self.progress_slider.value()] -= 1
@@ -459,7 +558,7 @@ class VideoPlayer(QWidget):
         
         self.setAutoFillBackground(False)
         palette = self.palette()
-        palette.setBrush(self.backgroundRole(), QBrush(QPixmap('./demo/bg.png').scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)))
+        # palette.setBrush(self.backgroundRole(), QBrush(QPixmap('./demo/bg.png').scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)))
         self.setPalette(palette)
         if self.video_list[self.cur_video_idx-1] in self.ori_video:
             self.keyframe_bar.show()
@@ -500,7 +599,7 @@ class VideoPlayer(QWidget):
         if self.cur_video_idx == 1:
             self.pre_button.setDisabled(True)
         self.next_button.setDisabled(False)
-        self.video_position_label.setText(f"Frame: -/- | Video: {self.cur_video_idx}/{len(self.video_list)}")
+        self.video_position_label.setText(f"帧: -/- | 视频: {self.cur_video_idx}/{len(self.video_list)}")
 
     def next_frame(self):
         if self.cur_frame_idx < self.frame_count - 1:
@@ -562,8 +661,8 @@ class VideoPlayer(QWidget):
             self.clip_lang_input.setText('') 
     
     def request_video(self):
-        if self.video_list[self.cur_video_idx-1] in self.video_cache:
-            video = self.video_cache[self.video_list[self.cur_video_idx-1]]
+        if self.video_cache.get(self.video_list[self.cur_video_idx-1]) is not None:
+            video = self.video_cache.get(self.video_list[self.cur_video_idx-1])       
         else:
             try:
                 self.requesting_item = self.video_list[self.cur_video_idx-1]
@@ -574,12 +673,13 @@ class VideoPlayer(QWidget):
                 return None
             if video is None:
                 return None
-            self.video_cache[self.video_list[self.cur_video_idx-1]] = video
+            self.video_cache.add(self.video_list[self.cur_video_idx-1], video)
         return video
     
     def request_video_by_name(self, name):
-        if name not in self.video_cache or self.video_cache[name] is None:
+        if self.video_cache.get(name) is None:
             self.requesting_item = name
+            print(f"Loading video {name}")
             video = request_video(os.path.join(ROOT_DIR, name))
             self.requesting_item = None
         return video, name
@@ -589,16 +689,6 @@ class VideoPlayer(QWidget):
         # 传入参数
         video_thread.signals.finished.connect(self.load_video_quiet_callback)
         self.threadpool.start(video_thread)
-    
-    def load_video_all(self):
-        self.threadpool = QThreadPool()
-        for video_name in self.video_list:
-            if self.requesting_item == video_name:
-                continue
-            if video_name not in self.video_cache or self.video_cache[video_name] is None:
-                print(f"Loading video {video_name}")
-                self.request_video_quiet(video_name)
-                break
     
     def request_video_async(self):
         class VideoThread(QThread):
@@ -704,14 +794,55 @@ class VideoPlayer(QWidget):
         self.all_anno[self.video_list[self.cur_video_idx-1]]['track'] = track_res
         
         for i in self.video_cache:
-            self.all_anno[i]['video'] = self.video_cache[i]
+            if self.video_cache[i] is not None:
+                if i not in self.all_anno:
+                    self.all_anno[i] = dict()
+                self.all_anno[i]['video'] = self.video_cache[i]
         
         pickle.dump(self.all_anno, open(args.out_file, 'wb'))
         self.smart_message("保存成功!")
     
-    def load_annotation(self):
-        pass
+    def save_lang_anno(self):
+        self.progress = QProgressDialog("请等待，正在储存标注结果...", None, 0, 0, self)
+        self.progress.setWindowModality(Qt.WindowModal)
+        self.progress.setCancelButton(None)
+        self.progress.setMinimumDuration(0)
+        self.progress.show()
         
+        for cur_video_name in self.lang_anno:
+        #################### parse video language annotation ####################
+            lang_res = dict()
+            if (0, 0) in self.lang_anno[cur_video_name] and self.lang_anno[cur_video_name][(0, 0)] != '':
+                lang_res['video'] = self.lang_anno[cur_video_name][(0, 0)]
+            else:
+                self.smart_message("请标注整体视频的语言描述")
+                return 
+            #################### parse clip language annotation ####################
+            lang_res['clip'] = []
+            for clip_range, lang in self.lang_anno[cur_video_name].items():
+                if clip_range == (0, 0):
+                    continue
+                if len(lang) == 0:
+                    self.smart_message(f"请完成帧{clip_range[0]}到帧{clip_range[1]}之前的语言标注")
+                    return
+                tmp_lang = dict()
+                tmp_lang['start_frame'] = clip_range[0]
+                tmp_lang['end_frame'] = clip_range[1]
+                tmp_lang['description'] = lang
+                lang_res['clip'].append(tmp_lang)
+            
+            self.lang_only_anno[cur_video_name] = lang_res
+        
+        # if os.path.exists(args.lang_out_file):
+        #     lang_res = pickle.load(open(args.lang_out_file, 'rb'))
+        #     for k, v in self.lang_only_anno.items():
+        #         if k not in lang_res:
+        #             lang_res[k] = v
+        # else:
+        lang_res = self.lang_only_anno
+        pickle.dump(lang_res, open(args.lang_out_file, 'wb'))
+        self.progress.close()
+    
     def get_anno_result(self):
         if self.anno_function_select.currentText() == '分割模型':
             self.get_sam_async()
@@ -932,8 +1063,12 @@ class VideoPlayer(QWidget):
         if video is not None:
             self.load_video(video)
             self.progress.close()
-            if self.threadpool is None:
-                self.load_video_all()
+            if self.cur_frame_idx >= len(self.video_list):
+                return
+            if self.video_cache.get(self.video_list[self.cur_video_idx]) is None and \
+                self.video_cache.get_locate(self.video_list[self.cur_video_idx-1]) < 5 and \
+                    self.video_cache.__len__() < 10:
+                        self.request_video_quiet(self.video_list[self.cur_video_idx])
         else:
             self.progress.close()
             self.smart_message("视频加载失败，请检查网络设置")
@@ -942,38 +1077,53 @@ class VideoPlayer(QWidget):
     def load_video_quiet_callback(self, res):
         video, name = res
         if video is not None:
-            self.video_cache[name] = video
+            self.video_cache.add(name, video)
             print(f'{name} video load success!')
-            for video_name in self.video_list:
-                if video_name not in self.video_cache or self.video_cache[video_name] is None:
-                    print(f"Loading video {video_name}")
-                    self.request_video_quiet(video_name)
+            for video_id in range(self.cur_video_idx, len(self.video_list)):
+                if self.video_cache.get_locate(self.video_list[self.cur_video_idx-1]) == 5:
+                    self.video_cache.pop()
+                if self.video_cache.__len__() >= 10:
                     break
+                if self.video_cache.get(self.video_list[video_id]) is None and \
+                    self.video_cache.get_locate(self.video_list[self.cur_video_idx-1]) < 5 and \
+                        self.video_cache.__len__() < 10:
+                            self.request_video_quiet(self.video_list[video_id])
+                            break
         else:
             print(f'Error: {name} video load failed!')
             return
         
     def load_video_async(self):
-        if self.requesting_item == self.video_list[self.cur_video_idx-1]:
-            self.smart_message("请等待，正在加载视频...")
-            self.clear_video()
-            return
-        
         self.progress = QProgressDialog("请等待，正在加载视频...", None, 0, 0, self)
         self.progress.setWindowModality(Qt.WindowModal)
         self.progress.setCancelButton(None)
         self.progress.setMinimumDuration(0)  # 立即显示对话框
         self.progress.show()
         
-        if self.video_list[self.cur_video_idx-1] in self.ori_video:
-            video = self.video_cache[self.video_list[self.cur_video_idx-1]]
+        video = self.video_cache.get(self.video_list[self.cur_video_idx-1])
+        if video is not None:
             res = self.load_video(video)
             if res == -1:
                 self.progress.close()
                 self.smart_message("视频加载失败，请检查网络设置")
             else:
                 self.progress.close()
-        else:     
+                for video_id in range(self.cur_video_idx, len(self.video_list)):
+                    
+                    if self.video_cache.get_locate(self.video_list[self.cur_video_idx-1]) == 5:
+                        self.video_cache.pop()
+                    
+                    if self.video_cache.__len__() >= 10:
+                        break
+                    
+                    if self.video_cache.get(self.video_list[video_id]) is None and \
+                        self.video_cache.get_locate(self.video_list[self.cur_video_idx-1]) < 5 and \
+                            self.video_cache.__len__() < 10:
+                                print('Loading video:', video_id)
+                                self.request_video_quiet(self.video_list[video_id])
+                                break
+        else:
+            self.video_cache.clear()
             self.video_thread = self.request_video_async()
             self.video_thread.finished.connect(self.load_video_callback)
             self.video_thread.start()
@@ -1194,6 +1344,10 @@ class VideoPlayer(QWidget):
         self.sam_config['labels'] = labels_all
         self.sam_config['select_frame'] = select_frame
         
+        
+        return 0
+    
+    
         return 0
     
     def smart_message(self, message, auto_close=True):
@@ -1217,6 +1371,7 @@ class VideoPlayer(QWidget):
             return
     
     def get_sam_async(self):
+        
         if self.video_list[self.cur_video_idx-1] not in self.ori_video:
             self.smart_message("请先加载视频!")
             return
@@ -1232,29 +1387,55 @@ class VideoPlayer(QWidget):
             self.smart_message("请先标注!")
             return
         
-        self.progress = QProgressDialog("请等待，正在请求分割模型...", None, 0, 0, self)
+        self.set_sam_config()
+        # self.progress = QProgressDialog("请等待，正在请求分割模型...", None, 0, 0, self)
+        # self.progress.setWindowModality(Qt.WindowModal)
+        # self.progress.setCancelButton(None)
+        # self.progress.setMinimumDuration(0)
+        # self.progress.show()
+        
+        # self.sam_thread = self.request_sam_async()
+        # self.sam_thread.finished.connect(self.sam_callback)
+        # self.sam_thread.start()
+    
+    def save_sam_input(self):
+        self.progress = QProgressDialog("请等待，正在储存标注结果...", None, 0, 0, self)
         self.progress.setWindowModality(Qt.WindowModal)
         self.progress.setCancelButton(None)
         self.progress.setMinimumDuration(0)
         self.progress.show()
-        
-        self.sam_thread = self.request_sam_async()
-        self.sam_thread.finished.connect(self.sam_callback)
-        self.sam_thread.start()
+        self.get_sam_async()
+        self.sam_point_anno[self.video_list[self.cur_video_idx-1]] = self.sam_config.copy()
+        if os.path.exists(args.sam_input_anno):
+            old_file = pickle.load(open(args.sam_input_anno, 'rb'))
+            for k, v in old_file.items():
+                if k not in self.sam_point_anno:
+                    self.sam_point_anno[k] = v
+        pickle.dump(self.sam_point_anno, open(args.sam_input_anno, 'wb'))
+        self.progress.close()
     
     def get_sam_result(self):
-        res = self.set_sam_config()
-        if res == -1:
-            return -1
+        self.set_sam_config()
         
-        masks, mask_images = request_sam(self.sam_config)
+        masks = request_sam(self.sam_config)
         if masks is None:
             return -1
         
         frame_id = self.sam_config['select_frame']
         direction = self.sam_config['direction']
-        mask_images = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])
         
+        video = self.ori_video[self.video_list[self.cur_video_idx-1]]
+        model_config = self.sam_config.copy()
+    
+        if direction == 'bidirection':
+            mask_images = self.get_sam_mask_on_image_bidirection(model_config, masks, video)
+        else:
+            mask_images = self.get_sam_mask_on_image_forward(model_config, masks, video)
+        
+        if mask_images is None:
+            return -1
+        
+        mask_images = np.array([cv2.cvtColor(mask_image, cv2.COLOR_BGR2RGB) for mask_image in mask_images])
         if self.anno[self.video_list[self.cur_video_idx-1]]['sam'] is None:
             self.anno[self.video_list[self.cur_video_idx-1]]['sam'] = np.zeros((masks.shape[0], self.frame_count, *masks[0,0].shape))  
         elif self.anno[self.video_list[self.cur_video_idx-1]]['sam'].shape[0] != masks.shape[0]:
@@ -1666,7 +1847,7 @@ class VideoPlayer(QWidget):
         else:
             cached_lang = ''
         
-        dialog = TextInputDialog(cached_lang, self)
+        dialog = TextInputDialog(cached_lang, self, True, self.video_anno_list[self.video_list[self.cur_video_idx-1]])
         if dialog.exec_() == QDialog.Accepted:
             video_description = dialog.get_text()
             self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] = video_description
@@ -1683,17 +1864,96 @@ class VideoPlayer(QWidget):
             return anno_loc[0], self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc[0]]
         return None, (None, None)
 
+    def synthesis_image(self, masks_list, video, positive_points_dict):
+        obj_id = list(positive_points_dict.keys())
+        cmap = plt.get_cmap("tab10")
+        colors = [np.array([*cmap(int(i))[:3]]) for i in obj_id]
+        mask_image = [torch.tensor(masks_list[i]).permute(2, 3, 1, 0).numpy() * (
+            colors[i].reshape(1, 1, -1)[:, :, :, None]
+        ) for i in range(len(masks_list))]
+        
+        mask_image = [
+            (torch.tensor(mask_image[i]).permute(3, 0, 1, 2) * 255)
+            .numpy()
+            .astype(np.uint8) for i in range(len(mask_image))
+        ]
+        mix_image_list = []
 
+        # add mask to video
+        width, height = mask_image[0][0].shape[1], mask_image[0][0].shape[0]
+        text_scale = width / 800
+        assert video.shape[0] == mask_image[0].shape[0], f"video shape: {video.shape[0]}, mask shape: {mask_image[0].shape[0]}"
+        for i in range(video.shape[0]):      
+            for obj_id in range(len(masks_list)):
+                mix_mask = masks_list[obj_id][i][0][:, :, None].repeat(3, axis=2)
+                mix_image = np.where(mix_mask, mask_image[obj_id][i], video[i]) if obj_id == 0 else np.where(mix_mask, mask_image[obj_id][i], mix_image)
+                # write number on the mask in the image by cv2
+                loc = np.where(mix_mask[:,:,0])
+                if len(loc[0]) == 0:
+                    continue
+                loc = (np.mean(loc[0]).astype(int), np.mean(loc[1]).astype(int))
+                
+                if loc[0] < 10:
+                    loc = (10, loc[1])
+                if loc[1] < 10:
+                    loc = (loc[0], 10)
+                if loc[0] > height - 10:
+                    loc = (height - 10, loc[1])
+                if loc[1] > width - 10:
+                    loc = (loc[0], width - 10)
+                
+                cv2.putText(mix_image, str(obj_id+1), (loc[1], loc[0]), cv2.FONT_HERSHEY_TRIPLEX, text_scale, (255, 255, 255), 1, cv2.LINE_AA)
+            
+            mix_image_list.append(mix_image)
+        
+        return mix_image_list
+
+    def get_sam_mask_on_image_forward(self, model_config, masks_list, video):
+        is_video = model_config["is_video"]
+        select_frame = model_config["select_frame"]
+        direction = model_config["direction"]
+        positive_points_dict = model_config["positive_points"]
+        if not is_video:
+            video = video[select_frame:select_frame + 1]
+            mask_list = masks_list[:, select_frame:select_frame + 1]
+        elif direction == "forward":
+            video = video[select_frame:]
+            mask_list = masks_list[:, select_frame:]
+        elif direction == "backward":
+            video = video[:select_frame+1][::-1]
+            mask_list = masks_list[:, :select_frame+1]
+        select_frame = 0
+        
+        mask_image = self.synthesis_image(mask_list, video, positive_points_dict)
+        if mask_image is None:
+            return None
+        
+        return mask_image
+
+    def get_sam_mask_on_image_bidirection(self, model_config, masks_list, video):
+        model_config["direction"] = "forward"
+        mask_images_forward = self.get_sam_mask_on_image_forward(model_config, masks_list, video)
+        if model_config['select_frame'] == 0:
+            mask_image = mask_images_forward
+        else:
+            model_config["direction"] = "backward"
+            mask_images_backward = self.get_sam_mask_on_image_forward(model_config, masks_list, video)
+            mask_image = mask_images_backward[::-1][:-1] + mask_images_forward
+        
+        return mask_image
+        
 if __name__ == "__main__":
     
     # load annotation file
     args = argparse.ArgumentParser()
     args.add_argument('--anno_file', type=str, default='./data/ann_all_new.npy')
     args.add_argument('--out_file', type=str, default='./data/annotation.pkl')
+    args.add_argument('--sam_input_anno', type=str, default='./data/sam_input_anno.pkl')
+    args.add_argument('--lang_out_file', type=str, default='./data/lang_anno.pkl')
     args = args.parse_args()
     
     app = QApplication(sys.argv)
     player = VideoPlayer(args)
-    player.resize(1080, 720)  # Adjusted size to accommodate the toolbar
+    player.resize(1080, 500)  # Adjusted size to accommodate the toolbar
     player.show()
     sys.exit(app.exec_())

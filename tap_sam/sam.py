@@ -84,9 +84,9 @@ class Sam:
 
         return mix_image_list
 
-    def set_video_path(self, video_path):
-        self.video_path = video_path
-        self.inference_state = self.predictor.init_state(video_path)
+    def set_video_list(self, video_list, video_path):
+        self.video_list = video_list
+        self.inference_state = self.predictor.init_state(video_list, video_path)
     
     def __call__(self, object_points, labels, select_frame, ann_obj_id):
         masks = []

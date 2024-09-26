@@ -1,10 +1,10 @@
 import yaml, json
 import numpy as np
 import requests, io, zipfile
-import cv2, torch
+import imageio
 from cotracker.utils.visualizer import Visualizer
 
-root_url = 'http://10.140.1.22:10087'
+root_url = 'http://10.140.1.34:10087'
 
 def request_sam(config):
     url = f"{root_url}/predict_sam"
@@ -19,25 +19,25 @@ def request_sam(config):
         with zipfile.ZipFile(zip_io, "r") as zf:
             with zf.open("masks.npy") as f:
                 masks = np.load(f)
-            with zf.open("mask_images.npy") as f:
-                mask_images = np.load(f)
+            # with zf.open("mask_images.npy") as f:
+            #     mask_images = np.load(f)
         # for save
-        if not is_video:
-            cv2.imwrite(
-                f"./demo.png", mask_images[0]
-            )
-        else:
-            width, height = mask_images[0].shape[1], mask_images[0].shape[0]
-            result = cv2.VideoWriter(
-                f"./demo.avi",
-                cv2.VideoWriter_fourcc(*"MJPG"),
-                10,
-                (width, height),
-            )
-            for i in range(len(mask_images)):
-                result.write(mask_images[i])
-            result.release()
-        return masks, mask_images
+        # if not is_video:
+        #     cv2.imwrite(
+        #         f"./demo.png", mask_images[0]
+        #     )
+        # else:
+        #     width, height = mask_images[0].shape[1], mask_images[0].shape[0]
+        #     result = cv2.VideoWriter(
+        #         f"./demo.avi",
+        #         cv2.VideoWriter_fourcc(*"MJPG"),
+        #         10,
+        #         (width, height),
+        #     )
+        #     for i in range(len(mask_images)):
+        #         result.write(mask_images[i])
+        #     result.release()
+        return masks
     else:
         print("Error:", response)
         return None, None
@@ -78,9 +78,13 @@ def request_video(video_path):
     if response.status_code == 200:
         zip_io = io.BytesIO(response.content)
         with zipfile.ZipFile(zip_io, "r") as zf:
-            with zf.open("video.npy") as f:
-                video = np.load(f)
-        return video
+            with zf.open("video.mp4") as f:
+                video = f.read()
+        frames = []
+        reader = imageio.get_reader(video, "mp4")
+        for i, im in enumerate(reader):
+            frames.append(np.array(im))
+        return np.stack(frames)
     else:
         print("Error:", response)
         return None
