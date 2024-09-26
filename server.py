@@ -1,4 +1,4 @@
-import io, zipfile, os, json
+import io, zipfile, imageio, json
 import numpy as np
 import time, yaml, torch
 from flask import Flask, request, send_file
@@ -16,7 +16,7 @@ def forward_sam(model_config):
     select_frame = model_config["select_frame"]
     direction = model_config["direction"]
 
-    temp_image_list_save_dir = video_path.rsplit(".", 1)[0].replace("lihao3", "_")
+    temp_image_list_save_dir = video_path.rsplit(".", 1)[0]
     video = extract_frames(video_path)
     if not is_video:
         video = video[select_frame:select_frame + 1]
@@ -26,8 +26,8 @@ def forward_sam(model_config):
         video = video[:select_frame+1][::-1]
     select_frame = 0
     
-    os.system(f"rm -rf {temp_image_list_save_dir}")
-    save_multi_frames(video, temp_image_list_save_dir)
+    # os.system(f"rm -rf {temp_image_list_save_dir}")
+    # save_multi_frames(video, temp_image_list_save_dir)
     
     positive_points_dict = model_config["positive_points"]
     negative_points_dict = model_config["negative_points"]
@@ -35,7 +35,7 @@ def forward_sam(model_config):
     
     mask_all = []
     global model_sam
-    model_sam.set_video_path(temp_image_list_save_dir)
+    model_sam.set_video_list(video, temp_image_list_save_dir)
     for obj_idx in positive_points_dict.keys():
         positive_points = np.array(positive_points_dict[obj_idx])
         negative_points = np.array(negative_points_dict[obj_idx])
@@ -47,25 +47,27 @@ def forward_sam(model_config):
         masks = model_sam(positive_points, labels, select_frame, obj_idx)
         mask_all.append(masks)
    
-    mask_images = model_sam.get_mask_on_image(
-        mask_all, video, save_path=model_config["save_path"], obj_id=list(positive_points_dict.keys())
-    )
-    os.system(f"rm -rf {temp_image_list_save_dir}")
+    # mask_images = model_sam.get_mask_on_image(
+    #     mask_all, video, save_path=model_config["save_path"], obj_id=list(positive_points_dict.keys())
+    # )
+    # os.system(f"rm -rf {temp_image_list_save_dir}")
     
-    return mask_images, mask_all
+    return mask_all
 
 def bidirectional_sam(model_config):
     model_config["direction"] = "forward"
-    mask_images_forward, masks_forward = forward_sam(model_config)
+    masks_forward = forward_sam(model_config)
+    if model_config['select_frame'] == 0:
+        return masks_forward
     model_config["direction"] = "backward"
-    mask_images_backward, masks_backward = forward_sam(model_config)
+    masks_backward = forward_sam(model_config)
     
-    mask_image = mask_images_backward[::-1][:-1] + mask_images_forward
+    # mask_image = mask_images_backward[::-1][:-1] + mask_images_forward
     masks = []
     for obj_id in range(len(masks_forward)):
         masks.append(np.concatenate([masks_backward[obj_id][::-1][:-1], masks_forward[obj_id]], axis=0))
     
-    return mask_image, masks
+    return masks
         
 def forward_co_tracker(model_config):
     video_path = model_config["cotracker"]["video_path"]
@@ -142,13 +144,13 @@ def predict_sam_video():
     # get parameters
     model_config = json.loads(request.data)
     if model_config["direction"] == "bidirection":
-        mask_images, masks = bidirectional_sam(model_config)
+        masks = bidirectional_sam(model_config)
     else:
-        mask_images, masks = forward_sam(model_config)
+        masks = forward_sam(model_config)
     zip_io = io.BytesIO()
     with zipfile.ZipFile(zip_io, "w") as zf:
-        with zf.open("mask_images.npy", "w") as f:
-            np.save(f, mask_images)
+        # with zf.open("mask_images.npy", "w") as f:
+        #     np.save(f, mask_images)
         with zf.open("masks.npy", "w") as f:
             np.save(f, masks)
 
@@ -185,12 +187,13 @@ def predict_cotracker():
 def get_video():
     model_config = json.loads(request.data)
     video_path = model_config["video_path"]
-    video = read_video_from_path(video_path)
-    zip_io = io.BytesIO()   
+    zip_io = io.BytesIO()
     with zipfile.ZipFile(zip_io, "w") as zf:
-        with zf.open("video.npy", "w") as f:
-            np.save(f, video)
-    
+        # send video
+        with zf.open("video.mp4", "w") as f:
+            with open(video_path, "rb") as video_file:
+                f.write(video_file.read())
+                
     zip_io.seek(0)
     return send_file(
         zip_io,
