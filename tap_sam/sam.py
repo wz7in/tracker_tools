@@ -88,17 +88,19 @@ class Sam:
         self.video_list = video_list
         self.inference_state = self.predictor.init_state(video_list, video_path)
     
-    def __call__(self, object_points, labels, select_frame, ann_obj_id):
+    def __call__(self, object_points, labels, select_frame, ann_obj_ids):
         masks = []
         # inference_state = self.predictor.init_state(video_path)
         self.predictor.reset_state(self.inference_state)
-        _, out_obj_ids, out_mask_logits = self.predictor.add_new_points_or_box(
-            inference_state=self.inference_state,
-            frame_idx=select_frame,
-            obj_id=int(ann_obj_id),
-            points=object_points,
-            labels=labels,
-        )
+        
+        for i in range(len(object_points)):
+            self.predictor.add_new_points_or_box(
+                inference_state=self.inference_state,
+                frame_idx=select_frame,
+                obj_id=int(ann_obj_ids[i]),
+                points=object_points[i],
+                labels=labels[i],
+            )
         video_segments = (
             {}
         )  # video_segments contains the per-frame segmentation results
@@ -111,11 +113,14 @@ class Sam:
                 out_obj_id: (out_mask_logits[i] > 0.0)
                 for i, out_obj_id in enumerate(out_obj_ids)
             }
-        masks = [
-            video_segments[frame_idx][int(ann_obj_id)]
-            for frame_idx in sorted(video_segments.keys())
-        ]
-        if masks[0].device != torch.device("cpu"):
-            masks = [mask.cpu().numpy() for mask in masks]
+        
+        masks = []
+        for i in range(len(object_points)):
+            masks.append(
+                np.array([
+                    video_segments[frame_idx][int(ann_obj_ids[i])].cpu().numpy()
+                    for frame_idx in sorted(video_segments.keys())
+                ])
+            )
         mask = np.stack(masks, axis=0)
         return mask

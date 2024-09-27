@@ -1,6 +1,6 @@
-import io, zipfile, imageio, json
+import io, zipfile, json
 import numpy as np
-import time, yaml, torch
+import yaml, torch
 from flask import Flask, request, send_file
 from tap_sam.sam import Sam
 from tap_sam.vis_utils import extract_frames, save_multi_frames
@@ -202,6 +202,29 @@ def get_video():
         download_name="video.zip",
     )
 
+@app.route("/get_mask", methods=["POST"])
+def get_mask():
+    config = json.loads(request.data)
+    video_path = config["video_path"]
+    mask_path = video_path.rsplit(".", 1)[0] + "mask.npz"
+    masks = np.load(mask_path)['masks']
+    config = np.load('/mnt/petrelfs/wangziqin/project/tracker_tools/data/sam_input_anno.pkl', allow_pickle=True)
+    config = config[video_path.split("/")[-1]]
+    zip_io = io.BytesIO()
+    with zipfile.ZipFile(zip_io, "w") as zf:
+        npz_io = io.BytesIO()
+        np.savez_compressed(npz_io, masks=masks)
+        npz_io.seek(0)
+        zf.writestr("masks.npy", npz_io.getvalue())
+        zf.writestr("config.json", json.dumps(config))
+    
+    zip_io.seek(0)
+    return send_file(
+        zip_io,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="mask.zip",
+    )
 
 if __name__ == "__main__":
 

@@ -10,6 +10,8 @@ videos
 **/*.pth
 **/__pycache__/
 !co-tracker/cotracker/utils/visualizer.py
+!segment-anything-2/sam2/sam2_video_predictor.py
+!segment-anything-2/sam2/build_sam.py
 **/*.pkl
 **/*.json
 **/*.txt
