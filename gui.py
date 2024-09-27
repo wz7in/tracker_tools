@@ -27,7 +27,7 @@ def load_anno_file(anno_file, out_file):
         anno = pickle.load(open(out_file, 'rb'))
     else:
         anno = {}
-    return sorted(list(video_anno.keys()))[:12], video_anno, anno
+    return ['RH20T_cfg1_task_0003_user_0008_scene_0010_cfg_.mp4'], video_anno, anno
 
 class TextInputDialog(QDialog):
     
@@ -152,7 +152,6 @@ class DictQueue():
     def clear(self):
         self.queue = []
         self.memory = {}
-    
 
 class VideoPlayer(QWidget):
     def __init__(self, args):
@@ -408,7 +407,7 @@ class VideoPlayer(QWidget):
         if mode is None:
             sys.exit()
         
-        if mode == 'SAM标注':
+        if mode == 'SAM首次标注':
             # 删除语言标注区域
             self.video_lang_input.hide()
             self.clip_lang_input.hide()
@@ -419,6 +418,21 @@ class VideoPlayer(QWidget):
             # line.hide()
             self.save_button.hide()
             tips_items = ['A: 上一帧', 'D: 下一帧']
+            self.sam_time = "first"
+        
+        elif mode == 'SAM二次标注':
+            # 删除语言标注区域
+            self.video_lang_input.hide()
+            self.clip_lang_input.hide()
+            clip_title.hide()
+            lang_title.hide()
+            clipline.hide()
+            videoline.hide()
+            # line.hide()
+            self.save_button.hide()
+            tips_items = ['A: 上一帧', 'D: 下一帧']
+            self.sam_time = "second"
+            self.load_button.setText("加载标注视频")
         
         elif mode == '语言标注':
             visline.hide()
@@ -526,7 +540,8 @@ class VideoPlayer(QWidget):
         mode_layout = QVBoxLayout()
         mode_dialog.setLayout(mode_layout)
         mode_select = QComboBox()
-        mode_select.addItem('SAM标注')
+        mode_select.addItem('SAM首次标注')
+        mode_select.addItem('SAM二次标注')
         mode_select.addItem('语言标注')
         # 返回选择的模式
         mode_layout.addWidget(mode_select)
@@ -1063,7 +1078,9 @@ class VideoPlayer(QWidget):
         if video is not None:
             self.load_video(video)
             self.progress.close()
-            if self.cur_frame_idx >= len(self.video_list):
+            if self.load_button.text() == '加载标注视频':
+                self.get_sam_async()
+            if self.cur_video_idx >= len(self.video_list):
                 return
             if self.video_cache.get(self.video_list[self.cur_video_idx]) is None and \
                 self.video_cache.get_locate(self.video_list[self.cur_video_idx-1]) < 5 and \
@@ -1108,6 +1125,11 @@ class VideoPlayer(QWidget):
                 self.smart_message("视频加载失败，请检查网络设置")
             else:
                 self.progress.close()
+                
+                # if self.load_button.text() == '加载标注视频':
+                #     print('Loading annotation video:', self.video_list[self.cur_video_idx-1])
+                #     self.get_sam_async()
+                
                 for video_id in range(self.cur_video_idx, len(self.video_list)):
                     
                     if self.video_cache.get_locate(self.video_list[self.cur_video_idx-1]) == 5:
@@ -1199,7 +1221,7 @@ class VideoPlayer(QWidget):
         if (0, 0) not in self.lang_anno[self.video_list[self.cur_video_idx-1]] or self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] == '':
             self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] = global_instruction_C
         self.video_lang_input.setText(self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)])
-
+        
         return 1
             
     def update_frame(self, frame_number):
@@ -1347,9 +1369,6 @@ class VideoPlayer(QWidget):
         
         return 0
     
-    
-        return 0
-    
     def smart_message(self, message, auto_close=True):
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Information)
@@ -1362,41 +1381,43 @@ class VideoPlayer(QWidget):
         if res == 1:
             self.vis_sam.setChecked(True)
             self.load_res()
-            self.progress.close()
+            self.progress_sam.close()
             # QMessageBox.information(self, "Success", "分割处理完成!")
             self.remove_frame_annotation()
         else:
-            self.progress.close()
+            self.progress_sam.close()
             QMessageBox.warning(self, "Error", "分割处理失败，请重试")
             return
     
     def get_sam_async(self):
         
-        if self.video_list[self.cur_video_idx-1] not in self.ori_video:
-            self.smart_message("请先加载视频!")
-            return
+        # if self.video_list[self.cur_video_idx-1] not in self.ori_video:
+        #     self.smart_message("请先加载视频!")
+        #     return
         
-        curr_frame = self.progress_slider.value()
-        tracking_points = self.tracking_points_sam[self.video_list[self.cur_video_idx-1]]
+        # curr_frame = self.progress_slider.value()
+        # tracking_points = self.tracking_points_sam[self.video_list[self.cur_video_idx-1]]
         
-        if curr_frame not in tracking_points or len(tracking_points[curr_frame]) == 0:
-            self.smart_message("请先标注!")
-            return
+        # if curr_frame not in tracking_points or len(tracking_points[curr_frame]) == 0:
+        #     self.smart_message("请先标注!")
+        #     return
         
-        if len(tracking_points[curr_frame][0]['raw_pos']) == 0:
-            self.smart_message("请先标注!")
-            return
+        # if len(tracking_points[curr_frame][0]['raw_pos']) == 0:
+        #     self.smart_message("请先标注!")
+        #     return
         
         self.set_sam_config()
         # self.progress = QProgressDialog("请等待，正在请求分割模型...", None, 0, 0, self)
-        # self.progress.setWindowModality(Qt.WindowModal)
-        # self.progress.setCancelButton(None)
-        # self.progress.setMinimumDuration(0)
-        # self.progress.show()
-        
-        # self.sam_thread = self.request_sam_async()
-        # self.sam_thread.finished.connect(self.sam_callback)
-        # self.sam_thread.start()
+        if self.load_button.text() == '加载标注视频':
+            self.progress_sam = QProgressDialog("请等待，正在加载结果...", None, 0, 0, self)
+            self.progress_sam.setWindowModality(Qt.WindowModal)
+            self.progress_sam.setCancelButton(None)
+            self.progress_sam.setMinimumDuration(0)
+            self.progress_sam.show()
+            
+            self.sam_thread = self.request_sam_async()
+            self.sam_thread.finished.connect(self.sam_callback)
+            self.sam_thread.start()
     
     def save_sam_input(self):
         self.progress = QProgressDialog("请等待，正在储存标注结果...", None, 0, 0, self)
@@ -1413,11 +1434,14 @@ class VideoPlayer(QWidget):
                     self.sam_point_anno[k] = v
         pickle.dump(self.sam_point_anno, open(args.sam_input_anno, 'wb'))
         self.progress.close()
-    
+     
     def get_sam_result(self):
-        self.set_sam_config()
+        if self.load_button.text() == '加载标注视频':
+            self.sam_config, masks = request_sam(self.sam_config, 'offline')
+        else:
+            self.set_sam_config()
+            masks = request_sam(self.sam_config, 'online')
         
-        masks = request_sam(self.sam_config)
         if masks is None:
             return -1
         
@@ -1426,12 +1450,12 @@ class VideoPlayer(QWidget):
         
         video = self.ori_video[self.video_list[self.cur_video_idx-1]]
         model_config = self.sam_config.copy()
-    
+
         if direction == 'bidirection':
             mask_images = self.get_sam_mask_on_image_bidirection(model_config, masks, video)
         else:
             mask_images = self.get_sam_mask_on_image_forward(model_config, masks, video)
-        
+
         if mask_images is None:
             return -1
         
@@ -1452,6 +1476,10 @@ class VideoPlayer(QWidget):
         else:
             self.sam_res[self.video_list[self.cur_video_idx-1]][frame_id:frame_id+mask_images.shape[0]] = mask_images
             self.anno[self.video_list[self.cur_video_idx-1]]['sam'][:, frame_id:frame_id+mask_images.shape[0]] = masks
+        
+        if self.load_button.text() == '加载标注视频':
+            self.vis_sam.setChecked(True)
+            self.load_res()
         
         return 1
     

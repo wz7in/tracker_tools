@@ -4,40 +4,30 @@ import requests, io, zipfile
 import imageio
 from cotracker.utils.visualizer import Visualizer
 
-root_url = 'http://10.140.1.34:10087'
+root_url = 'http://10.140.0.146:10087'
 
-def request_sam(config):
-    url = f"{root_url}/predict_sam"
+def request_sam(config, mode):
+    if mode == "online":
+        url = f"{root_url}/predict_sam"
+    else:
+        url = f"{root_url}/get_mask"
     # add parameters here
-    is_video = config["is_video"]
     response = requests.post(
         url, data=json.dumps(config), headers={"content-type": "application/json"}
     )
-
     if response.status_code == 200:
         zip_io = io.BytesIO(response.content)
         with zipfile.ZipFile(zip_io, "r") as zf:
-            with zf.open("masks.npy") as f:
-                masks = np.load(f)
-            # with zf.open("mask_images.npy") as f:
-            #     mask_images = np.load(f)
-        # for save
-        # if not is_video:
-        #     cv2.imwrite(
-        #         f"./demo.png", mask_images[0]
-        #     )
-        # else:
-        #     width, height = mask_images[0].shape[1], mask_images[0].shape[0]
-        #     result = cv2.VideoWriter(
-        #         f"./demo.avi",
-        #         cv2.VideoWriter_fourcc(*"MJPG"),
-        #         10,
-        #         (width, height),
-        #     )
-        #     for i in range(len(mask_images)):
-        #         result.write(mask_images[i])
-        #     result.release()
-        return masks
+            if mode == "online":
+                with zf.open("masks.npy") as f:
+                    masks = np.load(f)
+                return masks
+            if mode == "offline":
+                with zf.open("config.json") as f:
+                    config = json.load(f)
+                with zf.open("masks.npy") as f:
+                    masks = np.load(f)['masks']
+                return config, masks
     else:
         print("Error:", response)
         return None, None
