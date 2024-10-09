@@ -6,7 +6,7 @@ import pickle
 from PyQt5.QtCore import QPoint, QTimer, Qt
 import cv2
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QMessageBox, QLineEdit, QDialogButtonBox, QTextEdit, QGridLayout,
-                             QLabel, QSlider, QDialog, QHBoxLayout, QFrame, QProgressDialog, QRadioButton, QToolTip, QComboBox)
+                             QLabel, QSlider, QDialog, QHBoxLayout, QFrame, QProgressDialog, QRadioButton, QToolTip, QComboBox, QFileDialog)
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent, QBrush
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread, QThreadPool, pyqtSlot, QRunnable, QObject
 
@@ -18,6 +18,8 @@ import matplotlib.pyplot as plt
 
 ROOT_DIR = '/mnt/hwfile/OpenRobotLab/wangziqin/data/rh20t/'
 
+BASE_PRIM = ['移动到某个位置','把某个物体推到某处','把某个位置拉到某处','抓起某个物体','把某个物体放到某处','按压某个物体','按某种方式旋转某个物体']
+
 def load_anno_file(anno_file, out_file):
     if anno_file.endswith('.json'):
         video_anno = json.load(open(anno_file, 'r'))
@@ -27,7 +29,7 @@ def load_anno_file(anno_file, out_file):
         anno = pickle.load(open(out_file, 'rb'))
     else:
         anno = {}
-    return ['RH20T_cfg1_task_0003_user_0008_scene_0010_cfg_.mp4'], video_anno, anno
+    return list(video_anno.keys()), video_anno, anno
 
 class TextInputDialog(QDialog):
     
@@ -63,7 +65,10 @@ class TextInputDialog(QDialog):
             self.mode_title = QLabel('请选择原子动作:', self)
             self.mode_select = QComboBox()
             self.mode_select.addItems(primitive_action_options_C)
-            self.mode_select.setCurrentIndex(0)
+            # 添加分割线
+            self.mode_select.insertSeparator(len(primitive_action_options_C))
+            self.mode_select.addItems(BASE_PRIM)
+            self.mode_select.setCurrentIndex(-1)
             self.language_edit = QTextEdit()
             self.language_title = QLabel('请确认语言标注:', self)
             self.language_title.hide()
@@ -74,7 +79,7 @@ class TextInputDialog(QDialog):
                 self.language_edit.setText('')
             
             self.language_edit.setFixedHeight(100)
-            self.prim_select.currentIndexChanged.connect(self.language_select)
+            self.prim_select.currentIndexChanged.connect(lambda: self.language_select(clip_lang_C_options))
             self.main_layout.addWidget(self.language_edit, 2, 1)
             self.main_layout.addWidget(self.language_title, 2, 0)
             self.main_layout.addWidget(self.mode_title, 1, 0)
@@ -111,11 +116,13 @@ class TextInputDialog(QDialog):
         else:
             return ''
     
-    def language_select(self):
+    def language_select(self, clip_lang_C_options):
         if not self.is_video:
             self.language_title.show()
             self.language_edit.show()
             self.language_edit.setText(self.prim_select.currentText())
+            prim_idx_in_action = list(clip_lang_C_options.keys()).index(self.prim_select.currentText())
+            self.mode_select.setCurrentIndex(prim_idx_in_action)
 
 class DictQueue():
     def __init__(self):
@@ -155,14 +162,17 @@ class DictQueue():
 
 class VideoPlayer(QWidget):
     def __init__(self, args):
-        self.video_list, self.video_anno_list, self.all_anno = load_anno_file(args.anno_file, args.out_file)
         super().__init__()
         self.setWindowTitle("视频标注工具")
         ###########################################################
         #################### Main Area Layout ####################
         ###########################################################
         main_layout = QHBoxLayout()     
-        
+        # choose self.mode
+        self.mode = self.mode_choose()
+        if self.mode is None:
+            sys.exit()
+        self.file_load(args)
         ###########################################################
         #################### Video Area Layout ####################
         ###########################################################
@@ -235,7 +245,6 @@ class VideoPlayer(QWidget):
         #################### Toolbar Area Layout ##################
         ###########################################################
         self.toolbar_layout = QVBoxLayout()
-        
         # Auto-annotation function title layout
         function_title_layout = QHBoxLayout()
         function_title = QLabel("分割标注工具区", self)
@@ -247,7 +256,8 @@ class VideoPlayer(QWidget):
         fline.setFrameShadow(QFrame.Sunken)
         fline.setStyleSheet("color: grey;")  # Set the same color as the title
         function_title_layout.addWidget(fline)
-        self.toolbar_layout.addLayout(function_title_layout)
+        if self.mode != '语言标注':
+            self.toolbar_layout.addLayout(function_title_layout)
         # Auto-annotation function selection layout
         anno_button_layout = QHBoxLayout()
         self.anno_function_select = QComboBox()
@@ -282,7 +292,8 @@ class VideoPlayer(QWidget):
         anno_button_layout.addWidget(self.track_mode_selector)
         anno_button_layout.addWidget(self.track_point_num_label)
         anno_button_layout.addWidget(click_action_button)
-        self.toolbar_layout.addLayout(anno_button_layout)
+        if self.mode != '语言标注':
+            self.toolbar_layout.addLayout(anno_button_layout)
         self.sam_object_layout = QHBoxLayout()
         # sam pre object button
         self.sam_pre_button = QPushButton("上一个物体", self)
@@ -300,7 +311,8 @@ class VideoPlayer(QWidget):
         self.sam_object_layout.addWidget(self.sam_pre_button)
         self.sam_object_layout.addWidget(self.sam_obj_pos_label)
         self.sam_object_layout.addWidget(self.sam_next_button)
-        self.toolbar_layout.addLayout(self.sam_object_layout)
+        if self.mode != '语言标注':
+            self.toolbar_layout.addLayout(self.sam_object_layout)
         
         # Visualization area layout
         annotation_title_layout = QHBoxLayout()
@@ -313,7 +325,8 @@ class VideoPlayer(QWidget):
         visline.setFrameShadow(QFrame.Sunken)
         visline.setStyleSheet("color: grey;")  # Set the same color as the title
         annotation_title_layout.addWidget(visline)
-        self.toolbar_layout.addLayout(annotation_title_layout)
+        if self.mode != '语言标注':
+            self.toolbar_layout.addLayout(annotation_title_layout)
         # Visualization button layout
         vis_button_layout = QHBoxLayout()
         self.vis_button = QPushButton("可视化", self)
@@ -325,7 +338,8 @@ class VideoPlayer(QWidget):
         vis_button_layout.addWidget(self.vis_sam)
         self.vis_tracker = QRadioButton("跟踪结果视频", self)
         vis_button_layout.addWidget(self.vis_tracker)
-        self.toolbar_layout.addLayout(vis_button_layout)
+        if self.mode != '语言标注':
+            self.toolbar_layout.addLayout(vis_button_layout)
         self.vis_tracker.hide()
 
         # edit mode are layout
@@ -339,7 +353,8 @@ class VideoPlayer(QWidget):
         annoline.setFrameShadow(QFrame.Sunken)
         annoline.setStyleSheet("color: grey;")  # Set the same color as the title
         annotation_title_layout.addWidget(annoline)
-        self.toolbar_layout.addLayout(annotation_title_layout)
+        if self.mode != '语言标注':
+            self.toolbar_layout.addLayout(annotation_title_layout)
         # clear all button
         self.control_button_layout = QHBoxLayout()
         self.clear_all_button = QPushButton("删除所有标注", self)
@@ -354,11 +369,12 @@ class VideoPlayer(QWidget):
         self.remove_frame_button.clicked.connect(self.remove_frame_annotation)
         self.control_button_layout.addWidget(self.remove_frame_button)
         # save button
-        self.save_button = QPushButton("保存语言标注", self)
-        # self.save_button.clicked.connect(self.save_annotation)
-        self.save_button.clicked.connect(self.save_lang_anno)
-        self.control_button_layout.addWidget(self.save_button)
-        self.toolbar_layout.addLayout(self.control_button_layout)
+        # self.save_button = QPushButton("保存语言标注", self)
+        # # self.save_button.clicked.connect(self.save_annotation)
+        # self.save_button.clicked.connect(self.save_lang_anno)
+        # self.control_button_layout.addWidget(self.save_button)
+        if self.mode != '语言标注':
+            self.toolbar_layout.addLayout(self.control_button_layout)
 
         # Video language annotation area
         lang_layout = QVBoxLayout()
@@ -379,10 +395,8 @@ class VideoPlayer(QWidget):
         self.video_lang_input.setFixedHeight(60)
         self.video_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
         lang_layout.addWidget(self.video_lang_input)
-        self.toolbar_layout.addLayout(lang_layout)
         
         # Video clip language annotation area 
-        clip_layout = QVBoxLayout()
         lang_title_layout = QHBoxLayout()
         clip_title = QLabel("视频段语言标注展示区域", self)
         clip_title.setAlignment(Qt.AlignLeft)  # Left align the title
@@ -393,21 +407,15 @@ class VideoPlayer(QWidget):
         clipline.setFrameShadow(QFrame.Sunken)
         clipline.setStyleSheet("color: grey;")  # Set the same color as the title
         lang_title_layout.addWidget(clipline)
-        clip_layout.addLayout(lang_title_layout)
+        lang_layout.addLayout(lang_title_layout)
         # Video clip Language annotation show area
         self.clip_lang_input = QTextEdit(self)
         self.clip_lang_input.setReadOnly(True)
         self.clip_lang_input.setFixedHeight(80)
         self.clip_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
-        clip_layout.addWidget(self.clip_lang_input)
-        self.toolbar_layout.addLayout(clip_layout)
+        lang_layout.addWidget(self.clip_lang_input)
         
-        # choose mode
-        mode = self.mode_choose()
-        if mode is None:
-            sys.exit()
-        
-        if mode == 'SAM首次标注':
+        if self.mode == 'SAM首次标注':
             # 删除语言标注区域
             self.video_lang_input.hide()
             self.clip_lang_input.hide()
@@ -416,11 +424,11 @@ class VideoPlayer(QWidget):
             clipline.hide()
             videoline.hide()
             # line.hide()
-            self.save_button.hide()
+            # self.save_button.hide()
             tips_items = ['A: 上一帧', 'D: 下一帧']
             self.sam_time = "first"
         
-        elif mode == 'SAM二次标注':
+        elif self.mode == 'SAM二次标注':
             # 删除语言标注区域
             self.video_lang_input.hide()
             self.clip_lang_input.hide()
@@ -429,12 +437,12 @@ class VideoPlayer(QWidget):
             clipline.hide()
             videoline.hide()
             # line.hide()
-            self.save_button.hide()
+            # self.save_button.hide()
             tips_items = ['A: 上一帧', 'D: 下一帧']
             self.sam_time = "second"
             self.load_button.setText("加载标注视频")
         
-        elif mode == '语言标注':
+        elif self.mode == '语言标注':
             visline.hide()
             fline.hide()
             click_action_button.hide()
@@ -458,7 +466,32 @@ class VideoPlayer(QWidget):
             self.remove_frame_button.hide()
             tips_items = ['W: 标志开始帧','L: 添加段语言标注','S: 标记结束帧','删除: 删除标记帧','A: 上一帧','回车: 添加视频标注','D: 下一帧']
             
+            preview_clip_layout = QVBoxLayout()
+            preview_lang_title_layout = QHBoxLayout()
+            preview_clip_title = QLabel("视频段可用语言预览", self)
+            preview_clip_title.setAlignment(Qt.AlignLeft)  # Left align the title
+            preview_clip_title.setStyleSheet("color: grey; font-weight: bold;")  # Set font color and weight
+            preview_lang_title_layout.addWidget(preview_clip_title)
+            preview_clipline = QFrame(self)
+            preview_clipline.setFrameShape(QFrame.HLine)
+            preview_clipline.setFrameShadow(QFrame.Sunken)
+            preview_clipline.setStyleSheet("color: grey;")  # Set the same color as the title
+            preview_lang_title_layout.addWidget(preview_clipline)
+            preview_clip_layout.addLayout(preview_lang_title_layout)
+            # Video clip Language annotation show area
+            self.preview_clip_lang_input = QTextEdit(self)
+            self.preview_clip_lang_input.setReadOnly(True)
+            self.preview_clip_lang_input.setFixedHeight(180)
+            self.preview_clip_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
+            preview_clip_layout.addWidget(self.preview_clip_lang_input)
+            lang_layout.addLayout(preview_clip_layout)
             
+            self.save_button = QPushButton("保存语言标注", self)
+            # self.save_button.clicked.connect(self.save_annotation)
+            self.save_button.clicked.connect(self.save_lang_anno)
+            lang_layout.addWidget(self.save_button)
+            self.toolbar_layout.addLayout(lang_layout)
+              
         self.tips_layout = QVBoxLayout()
         self.tips_title_layout = QHBoxLayout()
         tips_title = QLabel("关键帧快捷键", self)
@@ -490,7 +523,8 @@ class VideoPlayer(QWidget):
 
         self.cur_video_idx = 1
         self.video_position_label.setText(f"帧: -/- | 视频: {self.cur_video_idx}/{len(self.video_list)}")
-        self.sam_obj_pos_label.setText("标注物体: -/-")
+        if self.mode != '语言标注':
+            self.sam_obj_pos_label.setText("标注物体: -/-")
         self.timer = QTimer()
         self.timer.timeout.connect(self.play_video)
 
@@ -531,12 +565,67 @@ class VideoPlayer(QWidget):
         self.sam_point_anno = dict()
         self.lang_only_anno = dict()
         
+    def file_load(self, args):
+        file_select_dialog = QDialog(self)
+        file_select_dialog.setWindowTitle("选择标注文件")
+        file_select_dialog.setFixedSize(600, 200)
+        file_select_layout = QVBoxLayout()
         
+        load_path_with_caption = QHBoxLayout()
+        file_select_button = QPushButton("选择文件", self)
+        file_select_button.clicked.connect(self.file_select)
+        file_load_path_label = QLabel("加载标注文件路径: ", self)
+        self.file_load_path_label = QLabel(self)
+        self.file_load_path_label.setText("未选择")
+        self.file_load_path_label.setFixedHeight(50)
+        # 自动换行
+        self.file_load_path_label.setWordWrap(True)
+        load_path_with_caption.addWidget(file_load_path_label)
+        load_path_with_caption.addWidget(self.file_load_path_label)
+        load_path_with_caption.addWidget(file_select_button)
+        file_select_layout.addLayout(load_path_with_caption)
+        
+        file_out_path_with_caption = QHBoxLayout()
+        if self.mode == '语言标注':
+            file_out_path_label = QLabel("语言标注储存路径: ", self)
+            out_path = args.lang_anno
+        else:
+            file_out_path_label = QLabel("标注文件储存路径: ", self)
+            out_path = args.sam_anno
+        
+        file_out_path_with_caption.addWidget(file_out_path_label)
+        file_path_label = QLineEdit(self)
+        file_path_label.setText(out_path)
+        file_out_path_with_caption.addWidget(file_path_label)
+        
+        file_select_layout.addLayout(file_out_path_with_caption)
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        button_box.accepted.connect(file_select_dialog.accept)
+        button_box.rejected.connect(file_select_dialog.reject)
+        file_select_layout.addWidget(button_box)
+        file_select_dialog.setLayout(file_select_layout)
+        
+        if file_select_dialog.exec_() == QDialog.Accepted:
+            self.file_out = file_path_label.text()
+            if self.file_path is not None:
+                try:
+                    self.video_list, self.video_anno_list, self.all_anno = load_anno_file(self.file_path, out_path)
+                except Exception as e:
+                    # alert error message
+                    QMessageBox.critical(self, "Error", "加载标注文件失败，请检查文件格式是否正确")
+                    self.file_load(args)
+    
+    def file_select(self):
+        file_path = QFileDialog.getOpenFileName(self, '选择标注文件', './', 'npy files(*.npy)')
+        self.file_path = file_path[0] if file_path[0] else None
+        if self.file_path is not None:
+            self.file_load_path_label.setText(self.file_path)
+
     def mode_choose(self):
         # 在主窗口上直接弹出对话框，选择模式
         mode_dialog = QDialog(self)
         mode_dialog.setWindowTitle("选择模式")
-        mode_dialog.setFixedSize(300, 200)
+        mode_dialog.setFixedSize(600, 200)
         mode_layout = QVBoxLayout()
         mode_dialog.setLayout(mode_layout)
         mode_select = QComboBox()
@@ -855,8 +944,12 @@ class VideoPlayer(QWidget):
         #             lang_res[k] = v
         # else:
         lang_res = self.lang_only_anno
-        pickle.dump(lang_res, open(args.lang_out_file, 'wb'))
+        pickle.dump(lang_res, open(self.file_out, 'wb'))
         self.progress.close()
+        
+        # auto jump to next video
+        self.next_video()
+        self.load_video_async()
     
     def get_anno_result(self):
         if self.anno_function_select.currentText() == '分割模型':
@@ -1181,8 +1274,7 @@ class VideoPlayer(QWidget):
             if i not in self.tracking_points_interp[self.video_list[self.cur_video_idx-1]]:
                 self.tracking_points_interp[self.video_list[self.cur_video_idx-1]][i] = dict(
                     pos=[], raw_pos=[]
-                )
-        
+                )     
         self.vis_ori.setChecked(True)
         self.vis_track_res = False 
         self.ori_video[self.video_list[self.cur_video_idx-1]] = np.array(video)
@@ -1190,6 +1282,8 @@ class VideoPlayer(QWidget):
             self.sam_res[self.video_list[self.cur_video_idx-1]] = np.array(video)
         if self.video_list[self.cur_video_idx-1] not in self.track_res:
             self.track_res[self.video_list[self.cur_video_idx-1]] = np.array(video)
+        self.sam_obj_pos_label.setText("标注物体: 1/1")
+        self.anno_function_select.setCurrentIndex(0)
         
         self.progress_slider.setMaximum(self.frame_count - 1)
         self.progress_slider.show()
@@ -1197,11 +1291,9 @@ class VideoPlayer(QWidget):
         self.update_keyframe_bar()
         self.update_frame(0)
         self.progress_slider.setValue(0)
-        self.anno_function_select.setCurrentIndex(0)
         self.keyframe_bar.show()
         self.video_position_label.setText(f"帧: {self.cur_frame_idx+1}/{self.frame_count} | 视频: {self.cur_video_idx}/{len(self.video_list)}")
         # self.pre_f_button.setDisabled(True)
-        self.sam_obj_pos_label.setText("标注物体: 1/1")
         if self.video_list[self.cur_video_idx-1] not in self.anno:
             self.anno[self.video_list[self.cur_video_idx-1]] = dict(
                 sam=None, track=None, visibility=None
@@ -1221,6 +1313,8 @@ class VideoPlayer(QWidget):
         if (0, 0) not in self.lang_anno[self.video_list[self.cur_video_idx-1]] or self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] == '':
             self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] = global_instruction_C
         self.video_lang_input.setText(self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)])
+        if self.mode == '语言标注':
+            self.preview_clip_lang_input.setText(self.get_clip_lang_anno())
         
         return 1
             
@@ -1427,13 +1521,15 @@ class VideoPlayer(QWidget):
         self.progress.show()
         self.get_sam_async()
         self.sam_point_anno[self.video_list[self.cur_video_idx-1]] = self.sam_config.copy()
-        if os.path.exists(args.sam_input_anno):
-            old_file = pickle.load(open(args.sam_input_anno, 'rb'))
+        if os.path.exists(self.file_out):
+            old_file = pickle.load(open(self.file_out, 'rb'))
             for k, v in old_file.items():
                 if k not in self.sam_point_anno:
                     self.sam_point_anno[k] = v
-        pickle.dump(self.sam_point_anno, open(args.sam_input_anno, 'wb'))
+        pickle.dump(self.sam_point_anno, open(self.file_out, 'wb'))
         self.progress.close()
+        self.next_video()
+        self.load_video_async()
      
     def get_sam_result(self):
         if self.load_button.text() == '加载标注视频':
@@ -1818,7 +1914,7 @@ class VideoPlayer(QWidget):
             self.selected_keyframe = self.progress_slider.value()
             self.remove_keyframe()
             self.update_frame_position_label()
-        elif key == Qt.Key_L:
+        elif key == Qt.Key_P:
             self.add_frame_discribtion()
         elif key == Qt.Key_Return:
             self.submit_description()
@@ -1970,18 +2066,25 @@ class VideoPlayer(QWidget):
         
         return mask_image
         
+    def get_clip_lang_anno(self):
+        lang = self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC']
+        out_text = ''
+        for i in enumerate(lang):
+            out_text += f"{i[0]+1}: {i[1]}\n"
+        return out_text.strip()
+
 if __name__ == "__main__":
     
     # load annotation file
     args = argparse.ArgumentParser()
-    args.add_argument('--anno_file', type=str, default='./data/ann_all_new.npy')
-    args.add_argument('--out_file', type=str, default='./data/annotation.pkl')
-    args.add_argument('--sam_input_anno', type=str, default='./data/sam_input_anno.pkl')
-    args.add_argument('--lang_out_file', type=str, default='./data/lang_anno.pkl')
+    # args.add_argument('--anno_file', type=str, default='./data/ann_all_new.npy')
+    args.add_argument('--out_file', type=str, default='./annotation.pkl')
+    args.add_argument('--sam_anno', type=str, default='./sam_anno.pkl')
+    args.add_argument('--lang_anno', type=str, default='./lang_anno.pkl')
     args = args.parse_args()
     
     app = QApplication(sys.argv)
     player = VideoPlayer(args)
-    player.resize(1080, 500)  # Adjusted size to accommodate the toolbar
+    player.resize(1080, 600)  # Adjusted size to accommodate the toolbar
     player.show()
     sys.exit(app.exec_())
