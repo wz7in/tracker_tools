@@ -1,10 +1,10 @@
-import yaml, json
+import pickle, json
 import numpy as np
 import requests, io, zipfile
 import imageio
 from cotracker.utils.visualizer import Visualizer
 
-root_url = 'http://10.140.0.146:10087'
+root_url = 'http://10.140.0.204:10087'
 
 def request_sam(config, mode):
     if mode == "online":
@@ -79,11 +79,79 @@ def request_video(video_path):
         print("Error:", response)
         return None
 
+def request_video_and_anno(mode, username, button_mode):
+    if mode == 'lang':
+        url = f"{root_url}/get_video_and_anno_lang"
+    else:
+        url = f"{root_url}/get_video_and_anno_sam"
+    
+    config = {
+        "username": username,
+        "mode": button_mode,
+    }
+    
+    response = requests.post(
+        url, data=json.dumps(config), headers={"content-type": "application/json"}, stream=True
+    )
+    if response.status_code == 200:
+        zip_io = io.BytesIO(response.content)
+        with zipfile.ZipFile(zip_io, "r") as zf:
+            with zf.open("is_finished") as f:
+                is_finished = f.read().decode("utf-8")
+                
+            is_finished = is_finished == 'True'
+            if is_finished:
+                return 0
+            
+            if not is_finished:
+                with zf.open("video.mp4") as f:
+                    video = f.read()
+                if mode == 'lang':
+                    with zf.open("anno.npz") as f:
+                        anno = np.load(f)['anno_file']
+                        anno = pickle.loads(anno)
+                with zf.open("save_path") as f:
+                    save_path = f.read().decode("utf-8")
+                with zf.open("video_path") as f:
+                    video_path = f.read().decode("utf-8")
+                with zf.open("history_number") as f:
+                    history_number = f.read().decode("utf-8")
+        
+        if not is_finished:
+            frames = []
+            reader = imageio.get_reader(video, "mp4")
+            for _, im in enumerate(reader):
+                frames.append(np.array(im))
+            if mode == 'lang':
+                return np.stack(frames), anno, save_path, video_path, int(history_number)
+            else:
+                return np.stack(frames), save_path, video_path, int(history_number)
+    else:
+        print("Error:", response)
+        if mode == 'lang':
+            return None, None, None, None, 0
+        else:
+            return None, None, None, 0
+
+def save_anno(save_path, anno):
+    url = f"{root_url}/save_anno"
+    # save as binary file
+    anno_bytes = io.BytesIO()
+    np.savez_compressed(anno_bytes, anno_file=anno)
+    anno_bytes.seek(0)
+    files = {
+        "file": ("anno.npz", anno_bytes, "application/octet-stream"),
+        "save_path": (None, save_path),
+    }
+    response = requests.post(url, files=files)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error:", response)
+        return False
+
 if __name__ == "__main__":
-    config_path = "./config/config.yaml"
-    with open(config_path, "r") as f:
-        model_config = yaml.load(f, Loader=yaml.FullLoader)
-    sam_config = model_config["sam"]
-    co_tracker_config = model_config["cotracker"]
-    # request_sam(sam_config, is_video=True)
-    request_cotracker(sam_config, co_tracker_config)
+    a,b = request_video_and_anno('sam')
+    print(a.shape, b)
+    # save_anno(c, b)
+    

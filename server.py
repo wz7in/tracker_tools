@@ -1,4 +1,4 @@
-import io, zipfile, json
+import io, zipfile, json, os, pickle
 import numpy as np
 import yaml, torch
 from flask import Flask, request, send_file
@@ -9,6 +9,7 @@ from cotracker.utils.visualizer import read_video_from_path, Visualizer
 
 app = Flask(__name__)
 model_sam, model_cotracker = None, None
+ROOT_DIR = '/mnt/hwfile/OpenRobotLab/Annotation4Manipulation'
 
 def forward_sam(model_config):
     video_path = model_config["video_path"]
@@ -183,24 +184,24 @@ def predict_cotracker():
         download_name="arrays.zip",
     )
 
-@app.route("/get_video", methods=["POST"])
-def get_video():
-    model_config = json.loads(request.data)
-    video_path = model_config["video_path"]
-    zip_io = io.BytesIO()
-    with zipfile.ZipFile(zip_io, "w") as zf:
-        # send video
-        with zf.open("video.mp4", "w") as f:
-            with open(video_path, "rb") as video_file:
-                f.write(video_file.read())
+# @app.route("/get_video", methods=["POST"])
+# def get_video():
+#     model_config = json.loads(request.data)
+#     video_path = model_config["video_path"]
+#     zip_io = io.BytesIO()
+#     with zipfile.ZipFile(zip_io, "w") as zf:
+#         # send video
+#         with zf.open("video.mp4", "w") as f:
+#             with open(video_path, "rb") as video_file:
+#                 f.write(video_file.read())
                 
-    zip_io.seek(0)
-    return send_file(
-        zip_io,
-        mimetype="application/zip",
-        as_attachment=True,
-        download_name="video.zip",
-    )
+#     zip_io.seek(0)
+#     return send_file(
+#         zip_io,
+#         mimetype="application/zip",
+#         as_attachment=True,
+#         download_name="video.zip",
+#     )
 
 @app.route("/get_mask", methods=["POST"])
 def get_mask():
@@ -226,6 +227,163 @@ def get_mask():
         download_name="mask.zip",
     )
 
+@app.route("/get_video_and_anno_lang", methods=["POST"])
+def get_video_and_anno_lang():
+    
+    config = json.loads(request.data)
+    user_name = config['username']
+    mode = config['mode']
+    
+    with open(os.path.join(ROOT_DIR, 'no_annotation_lang.json'), 'r') as f:
+        no_annotation = json.load(f)
+    with open(os.path.join(ROOT_DIR, 'has_annotation_lang.json'), 'r') as f:
+        has_annotation = json.load(f)
+        
+    if len(no_annotation) == 0:
+        is_finished = True
+    else:
+        is_finished = False
+        
+    if not is_finished:
+        video_path = list(no_annotation.keys())[0]
+        has_annotation[video_path] = no_annotation[video_path].copy()
+        user_config_path = os.path.join(ROOT_DIR, 'user_config', 'lang', f"{user_name}.txt")
+        if not os.path.exists(user_config_path):
+            history = []
+        else:
+            with open(user_config_path, 'r') as f:
+                history = f.readlines()
+        if mode == 'pre':
+            video_path = history[-1].strip()
+    
+    zip_io = io.BytesIO()
+    with zipfile.ZipFile(zip_io, "w") as zf:
+        if not is_finished:
+            with zf.open("video.mp4", "w") as f:
+                with open(video_path, "rb") as video_file:
+                    f.write(video_file.read())
+            npz_io = io.BytesIO()
+            anno_file = np.load(has_annotation[video_path]['anno_path'], allow_pickle=True)
+            np.savez_compressed(npz_io, anno_file=anno_file['data'])
+            npz_io.seek(0)
+            zf.writestr("anno.npz", npz_io.getvalue())
+            save_path = has_annotation[video_path]['save_path'].rsplit('/', 1)[0]
+            save_file_name = has_annotation[video_path]['save_path'].split('/')[-1].split('.')[0]
+            save_path = os.path.join(save_path, 'lang', save_file_name)
+            zf.writestr("save_path", save_path)
+            zf.writestr("video_path", video_path)
+            zf.writestr("history_number", str(len(history)))
+        zf.writestr("is_finished", str(is_finished))
+            
+    zip_io.seek(0)
+    return send_file(
+        zip_io,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="video_and_anno_lang.zip",
+    )
+
+@app.route("/get_video_and_anno_sam", methods=["POST"])
+def get_video_and_anno_sam():
+    config = json.loads(request.data)
+    user_name = config['username']
+    mode = config['mode']
+    
+    with open(os.path.join(ROOT_DIR, 'no_annotation_sam.json'), 'r') as f:
+        no_annotation = json.load(f)
+    with open(os.path.join(ROOT_DIR, 'has_annotation_sam.json'), 'r') as f:
+        has_annotation = json.load(f)
+    
+    if len(no_annotation) == 0:
+        is_finished = True
+    else:
+        is_finished = False
+    
+    if not is_finished:
+        video_path = list(no_annotation.keys())[0]
+        has_annotation[video_path] = no_annotation[video_path].copy()
+    
+        user_config_path = os.path.join(ROOT_DIR, 'user_config', 'sam', f"{user_name}.txt")
+        if not os.path.exists(user_config_path):
+            history = []
+        else:
+            with open(user_config_path, 'r') as f:
+                history = f.readlines()
+        if mode == 'pre':
+            video_path = history[-1].strip()
+    
+    zip_io = io.BytesIO()
+    with zipfile.ZipFile(zip_io, "w") as zf:
+        if not is_finished:
+            with zf.open("video.mp4", "w") as f:
+                with open(video_path, "rb") as video_file:
+                    f.write(video_file.read())
+            # send save path
+            save_path = has_annotation[video_path]['save_path'].rsplit('/', 1)[0]
+            save_file_name = has_annotation[video_path]['save_path'].split('/')[-1].split('.')[0]
+            save_path = os.path.join(save_path, 'sam', save_file_name)
+            zf.writestr("save_path", save_path)
+            zf.writestr("video_path", video_path)
+            zf.writestr("history_number", str(len(history)))
+        zf.writestr("is_finished", str(is_finished))
+    
+    zip_io.seek(0)
+    return send_file(
+        zip_io,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="video_and_anno_sam.zip",
+    )
+
+@app.route("/save_anno", methods=["POST"])
+def save_anno():
+    
+    with open(os.path.join(ROOT_DIR, 'no_annotation_sam.json'), 'r') as f:
+        no_annotation = json.load(f)
+    with open(os.path.join(ROOT_DIR, 'has_annotation_sam.json'), 'r') as f:
+        has_annotation = json.load(f)
+    
+    file = request.files.get('file')
+    file_content = file.read()
+    with np.load(io.BytesIO(file_content), allow_pickle=True) as data:
+        anno = data['anno_file'].item()
+    save_path = request.form.get('save_path')
+    user_name = anno['user']
+    video_path = anno['video_path']
+    mode = anno['button_mode']
+    
+    np.savez(save_path, pickle.dumps(anno))
+    if 'sam' in save_path.split('/'):
+        save_dir = os.path.join(ROOT_DIR, 'user_config', 'sam')
+    else:
+        save_dir = os.path.join(ROOT_DIR, 'user_config', 'lang')
+    
+    if not os.path.exists(os.path.join(save_dir, f'{user_name}.txt')):
+        history = []
+    else:
+        with open(os.path.join(save_dir, f'{user_name}.txt'), 'r') as f:
+            history = f.readlines()
+    
+    if len(history) > 0 and video_path == history[-1].strip():
+        history = history[:-1]
+    
+    history.append(video_path+'\n')
+    with open(os.path.join(save_dir, f'{user_name}.txt'), 'w') as f:
+        f.writelines(history)
+        
+    if video_path in no_annotation:
+        has_annotation[video_path] = no_annotation[video_path].copy()
+        del no_annotation[video_path]
+    
+        with open(os.path.join(ROOT_DIR, 'no_annotation_sam.json'), 'w') as f:
+            json.dump(no_annotation, f)
+        
+        with open(os.path.join(ROOT_DIR, 'has_annotation_sam.json'), 'w') as f:
+            json.dump(has_annotation, f)
+    
+    return "success"
+            
+
 if __name__ == "__main__":
 
     with open("./config/config.yaml") as f:
@@ -247,18 +405,3 @@ if __name__ == "__main__":
     )
 
     app.run(host="0.0.0.0", port=10087)
-
-    # model_cotracker = CoTrackerPredictor(
-    #     checkpoint='/mnt/petrelfs/wangziqin/project/tracker_tools/co-tracker/checkpoints/cotracker2.pth'
-    # ).to('cuda')
-    # video = read_video_from_path('/mnt/petrelfs/wangziqin/project/tracker_tools/demo/demo.mp4')
-    # video = torch.from_numpy(video).permute(0, 3, 1, 2).unsqueeze(0).float().to('cuda')
-    
-    # points = torch.tensor([
-    #     [0, 284, 125], 
-    #     [0, 301, 107]
-    # ]).float().to('cuda')
-    # pred_tracks, pred_visibility = model_cotracker(video, queries=points[None], backward_tracking=True)
-    # # pred_tracks, pred_visibility = model_cotracker(video, grid_size=10)
-    # vis = Visualizer(save_dir='./videos', pad_value=100)
-    # vis.visualize(video=video, tracks=pred_tracks, visibility=pred_visibility, filename='teaser')
