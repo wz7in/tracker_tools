@@ -27,13 +27,20 @@ def load_anno_file(anno_file):
 
 class TextInputDialog(QDialog):
     
-    def __init__(self, initial_text='', parent=None, is_video=True, video_anno_json=None, ann_id=None):
+    def __init__(self, initial_text='', parent=None, is_video=True, video_anno_json=None, origin_text=None):
         super().__init__(parent)
         self.setWindowTitle('请输入语言标注')
         self.setFocusPolicy(Qt.StrongFocus)
         self.is_video = is_video
         self.main_layout = QGridLayout(self)
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        self.language_edit = QTextEdit()
+        self.language_title = QLabel('请确认语言标注:', self)
+        self.language_title.hide()
+        self.mode_title = QLabel('请选择原子动作:', self)
+        self.mode_select = QComboBox()
+        self.mode_title.hide()
+        self.mode_select.hide()
         
         if not is_video:
             global_instruction_C = video_anno_json['instructionC']
@@ -43,27 +50,16 @@ class TextInputDialog(QDialog):
             self.prim_title = QLabel('请选择语言标注:', self)
             self.prim_select = QComboBox()
             self.prim_select.setFixedSize(400, 20)
-            clip_des = [i for i in task_stepsC_list if clip_lang_C_options[i] is None] + ['空']
-            primitive_action_options_C = [video_anno_json['action_stepsC'][idx] for idx, i in enumerate(task_stepsC_list) if clip_lang_C_options[i] is None] + ['空']
+            self.mode_title.show()
+            self.mode_select.show()
+            clip_des = [i for i in task_stepsC_list if clip_lang_C_options[i] is None or i == origin_text] + ['空']
+            primitive_action_options_C = [video_anno_json['action_stepsC'][idx] for idx, i in enumerate(task_stepsC_list) if clip_lang_C_options[i] is None or i == origin_text] + ['空']
             
             self.prim_select.addItems(clip_des)
             self.prim_select.insertSeparator(len(clip_des))
             self.prim_select.addItems(BASE_CLIP_DES)
-            self.prim_select.setMaxVisibleItems(30)
+            self.prim_select.setMaxVisibleItems(30)            
             
-            initial_action = None
-            for i in task_stepsC_list:
-                if clip_lang_C_options[i] is not None and clip_lang_C_options[i] == ann_id:
-                    initial_action = i
-                    break
-            if initial_action and len(initial_action) > 0:
-                self.prim_select.addItems([initial_action])
-                self.prim_select.setCurrentText(initial_action)
-            else:
-                self.prim_select.setCurrentIndex(-1)
-            
-            self.mode_title = QLabel('请选择原子动作:', self)
-            self.mode_select = QComboBox()
             self.mode_select.setFixedSize(400, 20)
             self.mode_select.addItems(primitive_action_options_C)
             # 添加分割线
@@ -71,9 +67,15 @@ class TextInputDialog(QDialog):
             self.mode_select.addItems(BASE_PRIM)
             self.mode_select.setCurrentIndex(-1)
             self.mode_select.setMaxVisibleItems(30)
-            self.language_edit = QTextEdit()
-            self.language_title = QLabel('请确认语言标注:', self)
-            self.language_title.hide()
+            
+            
+            if origin_text and len(origin_text) > 0:
+                # self.prim_select.addItems([initial_action])
+                self.prim_select.setCurrentText(origin_text)
+                self.language_select(clip_des)
+            else:
+                self.prim_select.setCurrentIndex(-1)
+            
             if initial_text is not None and len(initial_text) > 0:
                 self.language_edit.setText(initial_text)
             else:
@@ -106,6 +108,7 @@ class TextInputDialog(QDialog):
         
     def get_text(self):
         return self.language_edit.toPlainText() if not self.is_video else self.text_input.toPlainText()
+    
     
     def get_prim(self):
         if not self.is_video:
@@ -563,12 +566,7 @@ class VideoPlayer(QWidget):
                 
                 self.clear_video()
                 self.load_video_async()
-                
-                # if self.is_pre_button.isChecked():
-                #     self.is_pre_button.setChecked(False)
-                #     self.is_pre_button.setDisabled(True)
-                # else:
-                #     self.is_pre_button.setDisabled(False)
+            
             elif self.is_pre_button.isChecked():
                 self.clear_video()
                 self.load_video_async()
@@ -613,7 +611,8 @@ class VideoPlayer(QWidget):
         else:
             self.video_lang_input.setText('')
         
-        anno_loc, (clip_text, prim) = self.get_clip_description()
+        anno_loc, (clip_text, prim, origin_text) = self.get_clip_description()
+        anno_loc = anno_loc[1]
         if anno_loc is not None:
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {clip_text}")
         else:
@@ -644,7 +643,8 @@ class VideoPlayer(QWidget):
         else:
             self.video_lang_input.setText('')
         
-        anno_loc, (clip_text, prim) = self.get_clip_description()
+        anno_loc, (clip_text, prim, origin_text) = self.get_clip_description()
+        anno_loc = anno_loc[1]
         if anno_loc is not None:
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {clip_text}")
         else:
@@ -657,8 +657,9 @@ class VideoPlayer(QWidget):
                 self.is_pre_button.setChecked(False)
                 self.is_pre_button.setDisabled(True)
             else:
+                if not self.is_first:
+                    self.is_pre_button.setDisabled(False)
                 self.is_pre_button.setChecked(False)
-                self.is_pre_button.setDisabled(False)
                 self.button_mode = 'next'
             if self.mode == '语言标注':
                 return request_video_and_anno('lang', self.username, self.button_mode, self.video_path)
@@ -808,11 +809,12 @@ class VideoPlayer(QWidget):
             video, save_path, video_path, hist_num = res
         else:
             video, lang, save_path, video_path, hist_num = res
+            
             if lang['has_ori_instruction']:
                 self.video_2_lang = lang['annotation']
                 task_stepsC = self.video_2_lang['task_stepsC'].copy()
                 self.video_2_lang['task_stepsC'] = dict()
-                for i in task_stepsC:
+                for i in (task_stepsC + BASE_CLIP_DES):
                     self.video_2_lang['task_stepsC'][i] = None
                 self.video_2_lang['task_stepsC_list'] = task_stepsC
             else:
@@ -938,7 +940,8 @@ class VideoPlayer(QWidget):
         else:
             self.video_lang_input.setText('')
         
-        anno_loc, (clip_text, prim) = self.get_clip_description()
+        anno_loc, (clip_text, prim, origin_text) = self.get_clip_description()
+        anno_loc = anno_loc[1]
         if anno_loc is not None:
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {clip_text}")
         else:
@@ -1052,7 +1055,6 @@ class VideoPlayer(QWidget):
         self.progress.setCancelButton(None)
         self.progress.setMinimumDuration(0)
         self.progress.show()
-        print(self.sam_config)
         save_anno(self.save_path, self.sam_config.copy())
         self.progress.close()
               
@@ -1156,12 +1158,14 @@ class VideoPlayer(QWidget):
                 self.smart_message('请标注结束帧')
                 return -1
             
-            if len(self.keyframes) > 0 and list(self.keyframes.keys())[-1] >= current_frame:
-                self.smart_message('请勿在上一个视频段中标记')
-                if not debug:
-                    self.is_stop = False
-                    self.autoplayorstop()
-                return -1
+            if len(self.keyframes) > 0:
+                for i in list(self.lang_anno.keys()):
+                    if i[0] <= current_frame and i[1] >= current_frame and i[0] != i[1]:
+                        if not debug:
+                            self.is_stop = False
+                            self.autoplayorstop()
+                        self.smart_message('请勿在上一个视频段中标记')
+                        return -1
             
             if current_frame in self.keyframes and self.keyframes[current_frame] == 'end':
                 if not debug:
@@ -1176,22 +1180,43 @@ class VideoPlayer(QWidget):
             if not debug:
                 self.is_stop = True
                 self.autoplayorstop()
+            
+            self.last_start_frame = current_frame
         
         elif self.key_frame_mode == 'End':
             # check if the last keyframe is 'start'
             if len(self.keyframes) > 0 and list(self.keyframes.values())[-1] == 'end':
-                self.smart_message('请标记开始帧')
                 if not debug:
                     self.is_stop = False
                     self.autoplayorstop()
+                self.smart_message('请标记开始帧')
                 return -1
             
             if current_frame in self.keyframes and self.keyframes[current_frame] == 'start':
-                self.smart_message('请勿重复标记')
                 if not debug:
                     self.is_stop = False
                     self.autoplayorstop()
+                self.smart_message('请勿重复标记')
                 return -1
+            
+            if len(self.keyframes) > 0:
+                for i in list(self.lang_anno.keys()):
+                    if i[0] <= current_frame and i[1] >= current_frame:
+                        if not debug:
+                            self.is_stop = False
+                            self.autoplayorstop()
+                        self.smart_message('请勿在上一个视频段中标记')
+                        return -1
+
+                    if self.last_start_frame <= i[0] and i[1] <= current_frame and i[0] != 0:
+                        if not debug:
+                            self.is_stop = False
+                            self.autoplayorstop()
+                        self.keyframes.pop(self.last_start_frame)
+                        self.update_keyframe_bar()
+                        self.last_start_frame = None
+                        self.smart_message('中间包含其他视频段')
+                        return -1
             
             if len(self.keyframes) == 0:
                 self.smart_message('请先标记开始帧')
@@ -1231,16 +1256,16 @@ class VideoPlayer(QWidget):
             
         for i in key_pairs:
             if i not in self.lang_anno:
-                self.lang_anno[i] = (None, None)
+                self.lang_anno[i] = (None, None, None)
 
     def remove_keyframe(self):
         # Remove the selected keyframe if any
         if self.selected_keyframe is not None:
             frame_to_remove = self.selected_keyframe
             if frame_to_remove in self.keyframes:
-                del self.keyframes[frame_to_remove]
                 self.update_keyframe_bar()
-                self.selected_keyframe = None
+                self.clip_lang_input.clear()
+                self.selected_keyframe = None                
 
     def update_keyframe_bar(self):
         # Clear the keyframe bar
@@ -1273,7 +1298,8 @@ class VideoPlayer(QWidget):
             self.mark_keyframe()
         elif key == Qt.Key_Backspace and self.mode == '语言标注':
             self.selected_keyframe = self.progress_slider.value()
-            self.remove_keyframe()
+            # self.remove_keyframe()
+            self.delete_keyframe()
             self.update_frame_position_label()
         elif key == Qt.Key_Backspace and self.mode == '分割标注':
             self.remove_last_annotation()
@@ -1282,7 +1308,24 @@ class VideoPlayer(QWidget):
         elif key == Qt.Key_F:
             self.is_stop = not self.is_stop
             self.autoplayorstop()
+        elif key == Qt.Key_L and self.mode == '语言标注':
+            self.add_frame_discribtion()
 
+    def delete_keyframe(self):
+        info, lang = self.get_clip_description()
+        if info[0] is not None:
+            # remove the description
+            idx, loc = info
+            self.lang_anno.pop(loc)
+            self.keyframes.pop(loc[0])
+            self.keyframes.pop(loc[1])
+            for i in self.video_2_lang['task_stepsC']:
+                if self.video_2_lang['task_stepsC'][i] == lang[0]:
+                    self.video_2_lang['task_stepsC'][i] = None
+            self.update_keyframe_bar()
+            self.clip_lang_input.clear()
+            self.selected_keyframe = None
+        
     def add_frame_discribtion(self):
         frame_number = self.progress_slider.value()
         if self.update_lang_anno() == -1:
@@ -1296,34 +1339,34 @@ class VideoPlayer(QWidget):
         # load the cached description
         anno_loc = [(idx, i) for idx, i in enumerate(key_pairs) if i[0] <= frame_number <= i[1] and i[0] != i[1]]
         if (0, 0) in self.lang_anno:
-            anno_loc = [(i[0]-1, i[1]) for i in anno_loc]
+            anno_loc = [(i[0], i[1]) for i in anno_loc]
         
         if len(anno_loc) == 0:
             self.smart_message('请移动到所在区域的起止帧之间')
             return
         anno_id, anno_loc = anno_loc[0]
         
-        if self.lang_anno[anno_loc] is not None:
-            cached_lang, prim = self.lang_anno[anno_loc]
+        if self.lang_anno[anno_loc][0] is not None:
+            cached_lang, prim, origin_text = self.lang_anno[anno_loc]
         else:
-            cached_lang, prim = '', ''
+            cached_lang, prim, origin_text = '', '', ''
         # Create a dialog to get the description from the user
-        dialog = TextInputDialog(cached_lang, self, False, self.video_2_lang, ann_id=anno_id)
-        select_lang = dialog.get_select_lang()
+        dialog = TextInputDialog(cached_lang, self, False, self.video_2_lang, origin_text=origin_text)
         if dialog.exec_() == QDialog.Accepted:
+            select_lang = dialog.get_select_lang()
             if select_lang == '空':
-                select_gt_id = [i for i in self.video_2_lang['task_stepsC'] if self.video_2_lang['task_stepsC'][i] == anno_id]
+                select_gt_id = [i for i in self.video_2_lang['task_stepsC'] if self.video_2_lang['task_stepsC'][i] == cached_lang]
                 if len(select_gt_id) > 0:
                     self.video_2_lang['task_stepsC'][select_gt_id[0]] = None
             elif len(select_lang) > 0:
                 self.video_2_lang['task_stepsC'][select_lang] = None
-            
+
             cached_lang = dialog.get_text()
             prim = dialog.get_prim()
             select_lang = dialog.get_select_lang()
             if select_lang != '空':
-                self.video_2_lang['task_stepsC'][select_lang] = anno_id
-            self.lang_anno[anno_loc] = (cached_lang, prim)
+                self.video_2_lang['task_stepsC'][select_lang] = cached_lang
+            self.lang_anno[anno_loc] = (cached_lang, prim, select_lang)
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {cached_lang}")
         else:
             return 
@@ -1347,10 +1390,11 @@ class VideoPlayer(QWidget):
         # Get the description for the clip
         key_pairs = list(self.lang_anno.keys())
         frame_number = self.progress_slider.value()
-        anno_loc = [i for i in key_pairs if i[0] <= frame_number <= i[1] and i[0] != i[1]]
+        anno_loc = [(idx, i) for idx, i in enumerate(key_pairs) if i[0] <= frame_number <= i[1] and i[0] != i[1]]
         if len(anno_loc) > 0:
-            return anno_loc[0], self.lang_anno[anno_loc[0]]
-        return None, (None, None)
+            anno_loc = anno_loc[0]
+            return anno_loc, self.lang_anno[anno_loc[1]]
+        return (None, None), (None, None, None)
 
     def synthesis_image(self, masks_list, video, positive_points_dict):
         obj_id = list(positive_points_dict.keys())
