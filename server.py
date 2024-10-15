@@ -6,6 +6,8 @@ from tap_sam.sam import Sam
 from tap_sam.vis_utils import extract_frames, save_multi_frames
 from cotracker.predictor import CoTrackerPredictor
 from cotracker.utils.visualizer import read_video_from_path, Visualizer
+import multiprocessing
+import portalocker
 
 app = Flask(__name__)
 model_sam, model_cotracker = None, None
@@ -290,7 +292,9 @@ def get_video_and_anno_sam():
     mode = config['mode']
     
     with open(os.path.join(ROOT_DIR, 'no_annotation_sam.json'), 'r') as f:
+
         no_annotation = json.load(f)
+        
     with open(os.path.join(ROOT_DIR, 'has_annotation_sam.json'), 'r') as f:
         has_annotation = json.load(f)
     
@@ -338,11 +342,6 @@ def get_video_and_anno_sam():
 @app.route("/save_anno", methods=["POST"])
 def save_anno():
     
-    with open(os.path.join(ROOT_DIR, 'no_annotation_sam.json'), 'r') as f:
-        no_annotation = json.load(f)
-    with open(os.path.join(ROOT_DIR, 'has_annotation_sam.json'), 'r') as f:
-        has_annotation = json.load(f)
-    
     file = request.files.get('file')
     file_content = file.read()
     with np.load(io.BytesIO(file_content), allow_pickle=True) as data:
@@ -350,13 +349,13 @@ def save_anno():
     save_path = request.form.get('save_path')
     user_name = anno['user']
     video_path = anno['video_path']
-    mode = anno['button_mode']
     
     np.savez(save_path, pickle.dumps(anno))
     if 'sam' in save_path.split('/'):
-        save_dir = os.path.join(ROOT_DIR, 'user_config', 'sam')
+        mode = 'sam'
     else:
-        save_dir = os.path.join(ROOT_DIR, 'user_config', 'lang')
+        mode = 'lang'
+    save_dir = os.path.join(ROOT_DIR, 'user_config', mode)
     
     if not os.path.exists(os.path.join(save_dir, f'{user_name}.txt')):
         history = []
@@ -371,37 +370,44 @@ def save_anno():
     with open(os.path.join(save_dir, f'{user_name}.txt'), 'w') as f:
         f.writelines(history)
         
+    with open(os.path.join(ROOT_DIR, f'no_annotation_{mode}.json'), 'r') as f:
+        no_annotation = json.load(f)
+    
+    with open(os.path.join(ROOT_DIR, f'has_annotation_{mode}.json'), 'r') as f:
+        has_annotation = json.load(f)
+        
     if video_path in no_annotation:
         has_annotation[video_path] = no_annotation[video_path].copy()
         del no_annotation[video_path]
     
-        with open(os.path.join(ROOT_DIR, 'no_annotation_sam.json'), 'w') as f:
+        with open(os.path.join(ROOT_DIR, f'no_annotation_{mode}.json'), 'w') as f:
             json.dump(no_annotation, f)
         
-        with open(os.path.join(ROOT_DIR, 'has_annotation_sam.json'), 'w') as f:
+        with open(os.path.join(ROOT_DIR, f'has_annotation_{mode}.json'), 'w') as f:
             json.dump(has_annotation, f)
     
     return "success"
             
+def run_on_port(port):
+    app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
 
-    with open("./config/config.yaml") as f:
-        model_config = yaml.load(f, Loader=yaml.FullLoader)
+    # with open("./config/config.yaml") as f:
+    #     model_config = yaml.load(f, Loader=yaml.FullLoader)
 
-    sam_config = model_config["sam"]
-    co_tracker_config = model_config["cotracker"]
+    # sam_config = model_config["sam"]
+    # co_tracker_config = model_config["cotracker"]
     
-    model_sam = Sam(
-        sam_config["sam_ckpt_path"],
-        sam_config["model_config"],
-        sam_config["threshold"],
-        False,
-        sam_config["device"],
-    )
+    # model_sam = Sam(
+    #     sam_config["sam_ckpt_path"],
+    #     sam_config["model_config"],
+    #     sam_config["threshold"],
+    #     False,
+    #     sam_config["device"],
+    # )
 
-    model_cotracker = CoTrackerPredictor(
-        checkpoint=co_tracker_config["cotracker_ckpt_path"]
-    )
-
-    app.run(host="0.0.0.0", port=10087)
+    # model_cotracker = CoTrackerPredictor(
+    #     checkpoint=co_tracker_config["cotracker_ckpt_path"]
+    # )
+    run_on_port(10087)

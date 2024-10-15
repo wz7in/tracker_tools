@@ -1,12 +1,14 @@
-import pickle, json
+import pickle
+import random, json
 import numpy as np
 import requests, io, zipfile
 import imageio
 from cotracker.utils.visualizer import Visualizer
 
-root_url = 'http://10.140.0.204:10087'
+base_url = 'http://10.140.1.64:{port}'
 
 def request_sam(config, mode):
+    root_url = base_url.format(port=random.randint(10050, 10059))
     if mode == "online":
         url = f"{root_url}/predict_sam"
     else:
@@ -33,6 +35,7 @@ def request_sam(config, mode):
         return None, None
 
 def request_cotracker(sam_config, co_tracker_config):
+    root_url = base_url.format(port=random.randint(10050, 10059))
     url = f"{root_url}/predict_cotracker"    
 
     model_config = {
@@ -58,6 +61,7 @@ def request_cotracker(sam_config, co_tracker_config):
         return None, None, None
 
 def request_video(video_path):
+    root_url = base_url.format(port=random.randint(10050, 10059))
     url = f"{root_url}/get_video"
     config = {
         "video_path": video_path,
@@ -79,7 +83,8 @@ def request_video(video_path):
         print("Error:", response)
         return None
 
-def request_video_and_anno(mode, username, button_mode):
+def request_video_and_anno(mode, username, button_mode, last_video_path):
+    root_url = base_url.format(port=random.randint(10050, 10059))
     if mode == 'lang':
         url = f"{root_url}/get_video_and_anno_lang"
     else:
@@ -88,6 +93,7 @@ def request_video_and_anno(mode, username, button_mode):
     config = {
         "username": username,
         "mode": button_mode,
+        "last_video_path": last_video_path
     }
     
     response = requests.post(
@@ -134,6 +140,7 @@ def request_video_and_anno(mode, username, button_mode):
             return None, None, None, 0
 
 def save_anno(save_path, anno):
+    root_url = base_url.format(port=random.randint(10050, 10059))
     url = f"{root_url}/save_anno"
     # save as binary file
     anno_bytes = io.BytesIO()
