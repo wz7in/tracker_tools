@@ -375,7 +375,7 @@ class VideoPlayer(QWidget):
             self.clear_all_button.hide()
             self.remove_last_button.hide()
             self.remove_frame_button.hide()
-            tips_items = ['W: 标志开始帧','S: 标记结束帧','F: 播放/暂停视频', '删除: 删除标记段','A: 上一帧','回车: 添加视频标注','D: 下一帧']
+            tips_items = ['W: 标志开始帧','S: 标记结束帧','F: 播放/暂停视频', '删除: 删除标记段','A: 上一帧','回车: 添加视频标注','D: 下一帧', 'L: 修改视频段语言']
             
             preview_clip_layout = QVBoxLayout()
             preview_lang_title_layout = QHBoxLayout()
@@ -1055,13 +1055,14 @@ class VideoPlayer(QWidget):
     
     # 自动播放视频，再点击停止播放
     def autoplayorstop(self):
-        if self.is_stop:
-            self.play_button.setText("暂停")
-            self.current_frame = self.progress_slider.value()
-            self.timer.start(30)
-        else:
-            self.play_button.setText("播放")
-            self.timer.stop()
+        pass
+        # if self.is_stop:
+        #     self.play_button.setText("暂停")
+        #     self.current_frame = self.progress_slider.value()
+        #     self.timer.start(30)
+        # else:
+        #     self.play_button.setText("播放")
+        #     self.timer.stop()
 
     def set_sam_config(self):
         tracking_points = self.tracking_points_sam
