@@ -360,7 +360,7 @@ class VideoPlayer(QWidget):
             lang_title.hide()
             clipline.hide()
             videoline.hide()
-            tips_items = ['A: 上一帧', 'D: 下一帧', 'S: 标记分割帧', 'F: 播放/暂停视频', '删除: 删除分割帧']
+            tips_items = ['A: 上一帧', 'D: 下一帧', 'S: 标记分割帧', 'F: 播放/暂停视频', '删除: 删除分割帧', 'L: 修改物体绑定顺序']
             self.sam_time = "first"
 
         elif self.mode == '语言标注':
