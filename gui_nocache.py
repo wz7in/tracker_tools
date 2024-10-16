@@ -21,10 +21,6 @@ CACHE_NUMBER = 3
 BASE_CLIP_DES = ['拿着[某物体]从[某位置1]移动到[某位置2]', '在[某位置]抓起[某物体]', '把[某物体]放置到[某位置]', '在[某位置]按压[某物体]', '把[某物体]推到[某位置]', '把[某物体]拉到[某位置]', '[顺时针/逆时针/向下/向上/向左/向右]转动[某物体]',  '把[某物体]倒到[某位置]', '在[某位置]折叠[某物体]', '在[某位置]滑动[某物体]', '把[某物体]插入到[某位置]', '在[某位置]摇动[某物体]', '在[某位置]敲击[某物体]', '把[某物体]扔到[某位置]', '在[某位置]操作[某物体]']
 BASE_PRIM = ['拿着物体移动','抓起','放下','按压','推动','拉动','转动','倾倒','折叠','滑动','插入','摇动','敲击','扔掉','其余操作']
 
-def load_anno_file(anno_file):
-    video_json = json.load(open(anno_file))
-    return list(video_json.keys()), video_json
-
 class TextInputDialog(QDialog):
     
     def __init__(self, initial_text='', parent=None, is_video=True, video_anno_json=None, origin_text=None):
@@ -108,8 +104,7 @@ class TextInputDialog(QDialog):
         
     def get_text(self):
         return self.language_edit.toPlainText() if not self.is_video else self.text_input.toPlainText()
-    
-    
+      
     def get_prim(self):
         if not self.is_video:
             return self.mode_select.currentText()
@@ -133,6 +128,48 @@ class TextInputDialog(QDialog):
             clip_lang_C_options_keys = clip_des + ['Sep'] + BASE_CLIP_DES
             prim_idx_in_action = clip_lang_C_options_keys.index(self.prim_select.currentText())
             self.mode_select.setCurrentIndex(prim_idx_in_action)
+
+
+class ObjectAnnotationDialog(QDialog):
+    
+    def __init__(self, object_size, frame_number, keyframes, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('请输入物体标注')
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.main_layout = QGridLayout(self)
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        # add object size input box
+        self.object_size = object_size
+        start_frame_id = [0] + list(keyframes.keys())
+        for idx, start_idx in enumerate(start_frame_id):
+            
+            if idx == len(start_frame_id)-1:
+                end_idx = frame_number - 1
+            elif idx == 0:
+                end_idx = start_frame_id[idx+1]
+            
+            self.main_layout.addWidget(QLabel(f'视频区间[{start_idx+1}:{end_idx+1}]', self), idx, 0)
+            select_button = QComboBox()
+            select_button.addItems([f"物体{i+1}" for i in range(self.object_size)])
+            select_button.setFixedSize(100, 30)
+            select_button.setCurrentIndex(idx)
+            self.main_layout.addWidget(select_button, idx, 1)
+        
+        self.main_layout.addWidget(self.button_box, object_size, 0, 1, 2)
+        # self.main_layout.itemAt(self.object_size*2-1).widget().setText(str(frame_number))
+        
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+    
+    def get_obj_id(self):
+        return [int(self.main_layout.itemAt(i+1).widget().currentText().replace('物体','')) for i in range(0, self.object_size*2, 2)]
+    
+    def get_frame_id(self):
+        return [int(self.main_layout.itemAt(i).widget().text().split('[')[1].split(':')[0]) for i in range(0, self.object_size*2, 2)]
+    
+    def get_result(self):
+        return dict(zip(self.get_frame_id(), self.get_obj_id()))
+    
 
 class VideoPlayer(QWidget):
     def __init__(self, args):
@@ -276,7 +313,7 @@ class VideoPlayer(QWidget):
         self.control_button_layout.addWidget(self.remove_last_button)
         # remove frame button
         self.remove_frame_button = QPushButton("删除当前物体标注", self)
-        self.remove_frame_button.clicked.connect(self.remove_frame_annotation)
+        self.remove_frame_button.clicked.connect(self.remove_obj_annotation)
         self.control_button_layout.addWidget(self.remove_frame_button)
         # save button
         if self.mode != '语言标注':
@@ -329,7 +366,7 @@ class VideoPlayer(QWidget):
             lang_title.hide()
             clipline.hide()
             videoline.hide()
-            tips_items = ['A: 上一帧', 'D: 下一帧', 'F: 播放/暂停视频', '删除: 删除上一个标记点']
+            tips_items = ['A: 上一帧', 'D: 下一帧', 'S: 标记分割帧', 'F: 播放/暂停视频', '删除: 删除分割帧']
             self.sam_time = "first"
 
         elif self.mode == '语言标注':
@@ -344,7 +381,7 @@ class VideoPlayer(QWidget):
             self.clear_all_button.hide()
             self.remove_last_button.hide()
             self.remove_frame_button.hide()
-            tips_items = ['W: 标志开始帧','S: 标记结束帧','F: 播放/暂停视频', '删除: 删除标记帧','A: 上一帧','回车: 添加视频标注','D: 下一帧']
+            tips_items = ['W: 标志开始帧','S: 标记结束帧','F: 播放/暂停视频', '删除: 删除标记段','A: 上一帧','回车: 添加视频标注','D: 下一帧']
             
             preview_clip_layout = QVBoxLayout()
             preview_lang_title_layout = QHBoxLayout()
@@ -519,10 +556,10 @@ class VideoPlayer(QWidget):
         palette = self.palette()
         # palette.setBrush(self.backgroundRole(), QBrush(QPixmap('./demo/bg.png').scaled(self.size(), Qt.IgnoreAspectRatio, Qt.SmoothTransformation)))
         self.setPalette(palette)
-        if  len(self.ori_video)>0 and self.mode == '语言标注':
-            self.keyframe_bar.show()
-        else:
-            self.keyframe_bar.hide()
+        # if  len(self.ori_video)>0 and self.mode == '语言标注':
+        self.keyframe_bar.show()
+        # else:
+        #     self.keyframe_bar.hide()
     
     def next_sam_object(self):
         
@@ -560,10 +597,12 @@ class VideoPlayer(QWidget):
                     return
                 self.video_position_label.setText(f"帧: -/-")
                 if self.mode == '语言标注':
-                    self.save_lang_anno()
+                    res = self.save_lang_anno()
                 else:
-                    self.save_sam_anno()
+                    res = self.save_sam_anno()
                 
+                if res == -1:
+                    return
                 self.clear_video()
                 self.load_video_async()
             
@@ -719,6 +758,7 @@ class VideoPlayer(QWidget):
         save_anno(self.save_path, lang_res)
         self.progress.close()
         self.lang_anno = dict()
+        return 0
     
     def clear_annotations(self):
         self.tracking_points_sam = dict()
@@ -790,13 +830,19 @@ class VideoPlayer(QWidget):
     def remove_last_annotation(self):
         self.remove_last_sam_annotation()
     
-    def remove_frame_annotation(self):
+    def remove_obj_annotation(self):
         if len(self.tracking_points_sam) == 0:
             self.smart_message("请先加载视频!")
             return
-        self.tracking_points_sam[self.progress_slider.value()][self.sam_object_id[self.progress_slider.value()]] = dict(
-            pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[]
-        )
+        cur_obj_id = self.sam_object_id[self.progress_slider.value()]
+        self.tracking_points_sam[self.progress_slider.value()].pop(cur_obj_id)
+            
+        self.sam_object_id[self.progress_slider.value()] -= 1
+        
+        cur_id = self.sam_object_id[self.progress_slider.value()] + 1
+        all_object_size = len(self.tracking_points_sam[self.progress_slider.value()])
+        self.sam_obj_pos_label.setText(f"标注物体: {cur_id}/{all_object_size}")
+        
         if self.last_frame is not None:
             self.draw_image()
     
@@ -870,11 +916,14 @@ class VideoPlayer(QWidget):
         self.update_keyframe_bar()
         self.update_frame(0)
         self.progress_slider.setValue(0)
-        if self.mode == '语言标注':
-            self.keyframe_bar.show()
+        # if self.mode == '语言标注':
+        self.keyframe_bar.show()
         self.video_position_label.setText(f"帧: {self.cur_frame_idx+1}/{self.frame_count}")
         # self.pre_f_button.setDisabled(True)
         self.max_point_num = 0
+        self.hist_num = dict()
+        self.sam_frame_id = None
+        self.start_frame_to_object_id = dict()
         self.seek_video()
         # for align the keyframe display length
         if 0 not in self.keyframes and self.is_first:
@@ -960,9 +1009,17 @@ class VideoPlayer(QWidget):
         # Update the text of the label to show the current frame position
         frame_number = self.progress_slider.value()
         # check if the frame number has keyframe
-        if frame_number in self.keyframes and self.mode == '语言标注':
+        if frame_number in self.keyframes:
             keyframe_type = self.keyframes[frame_number]
-            keyframe_type = '开始' if keyframe_type.lower() == 'start' else '结束'
+            # keyframe_type = '开始' if keyframe_type.lower() == 'start' else '结束'
+            # keyframe_type = keyframe_type if 
+            if keyframe_type.lower() == 'start':
+                keyframe_type = '开始'
+            elif keyframe_type.lower() == 'end':
+                keyframe_type = '结束'
+            elif keyframe_type.lower() == 'object_sep':
+                keyframe_type = '分割'
+            
             self.frame_position_label.setText(f"帧: {frame_number+1}({keyframe_type})")
         else:
             self.frame_position_label.setText(f"帧: {frame_number+1}")
@@ -1006,13 +1063,22 @@ class VideoPlayer(QWidget):
 
     def set_sam_config(self):
         tracking_points = self.tracking_points_sam
+        select_frame = self.sam_frame_id
+        
+        if self.sam_object_id is None:
+            self.smart_message("请先标注物体")
+            return -1
+        
+        if len(tracking_points[select_frame]) - 1 > 0 and len(tracking_points[select_frame]) - 1 != len(list(self.keyframes.keys())) + 1:
+            self.smart_message("标注物体数量与关键帧数量不匹配, 请检查")
+            return -1
+        
         positive_points_all = {}
         negative_points_all = {}
         labels_all = {}
         
         direction = 'bidirection'
         is_video = True
-        select_frame = self.progress_slider.value()
         frame_pts = tracking_points[select_frame]
         
         # select all objects
@@ -1038,6 +1104,7 @@ class VideoPlayer(QWidget):
         self.sam_config['user'] = self.username
         self.sam_config['video_path'] = self.video_path
         self.sam_config['button_mode'] = self.button_mode
+        self.sam_config['start_frame_2_obj_id'] = self.start_frame_to_object_id
         
         return 0
     
@@ -1049,7 +1116,9 @@ class VideoPlayer(QWidget):
         msg.exec_()
     
     def save_sam_anno(self):
-        self.set_sam_config()
+        res = self.set_sam_config()
+        if res == -1:
+            return -1
         self.progress = QProgressDialog("请等待，正在储存标注结果...", None, 0, 0, self)
         self.progress.setWindowModality(Qt.WindowModal)
         self.progress.setCancelButton(None)
@@ -1057,6 +1126,7 @@ class VideoPlayer(QWidget):
         self.progress.show()
         save_anno(self.save_path, self.sam_config.copy())
         self.progress.close()
+        return 0
               
     def mousePressEvent(self, event: QMouseEvent):        
         if self.last_frame is None:
@@ -1077,6 +1147,7 @@ class VideoPlayer(QWidget):
             self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['pos'].append(click_position)
             self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['labels'].append(1)
             self.sam_next_button.setDisabled(False)
+            self.sam_frame_id = self.progress_slider.value()
                 
         elif event.button() == Qt.RightButton and self.last_frame is not None:
             pos = self.video_label.mapFromGlobal(event.globalPos())
@@ -1090,6 +1161,7 @@ class VideoPlayer(QWidget):
             self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['raw_neg'].append(original_position)
             self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['labels'].append(-1)
             self.sam_next_button.setDisabled(False)
+            self.sam_frame_id = self.progress_slider.value()
             
         self.draw_image()
     
@@ -1259,13 +1331,11 @@ class VideoPlayer(QWidget):
                 self.lang_anno[i] = (None, None, None)
 
     def remove_keyframe(self):
-        # Remove the selected keyframe if any
         if self.selected_keyframe is not None:
             frame_to_remove = self.selected_keyframe
             if frame_to_remove in self.keyframes:
-                self.update_keyframe_bar()
-                self.clip_lang_input.clear()
-                self.selected_keyframe = None                
+                self.keyframes.pop(frame_to_remove)
+                self.update_keyframe_bar()           
 
     def update_keyframe_bar(self):
         # Clear the keyframe bar
@@ -1276,6 +1346,7 @@ class VideoPlayer(QWidget):
         for frame, key_type in self.keyframes.items():
             x_position = int((frame / self.frame_count) * self.keyframe_bar.width())
             color = QColor('red') if key_type == 'start' else QColor('blue')
+            color = color if key_type != 'object_sep' else QColor('black')
             painter.fillRect(QRect(x_position, 0, 5, self.keyframe_bar.height()), color)
         painter.end()
 
@@ -1296,13 +1367,18 @@ class VideoPlayer(QWidget):
             self.key_frame_mode = 'End'
             self.is_stop = False
             self.mark_keyframe()
+        elif key == Qt.Key_S and self.mode == '分割标注':
+            self.add_object_sep()
+            self.update_frame_position_label()
         elif key == Qt.Key_Backspace and self.mode == '语言标注':
             self.selected_keyframe = self.progress_slider.value()
             # self.remove_keyframe()
             self.delete_keyframe()
             self.update_frame_position_label()
         elif key == Qt.Key_Backspace and self.mode == '分割标注':
-            self.remove_last_annotation()
+            self.selected_keyframe = self.progress_slider.value()
+            self.remove_keyframe()
+            self.update_frame_position_label()
         elif key == Qt.Key_Return and self.mode == '语言标注':
             self.submit_description()
         elif key == Qt.Key_F:
@@ -1310,7 +1386,39 @@ class VideoPlayer(QWidget):
             self.autoplayorstop()
         elif key == Qt.Key_L and self.mode == '语言标注':
             self.add_frame_discribtion()
-
+        elif key == Qt.Key_L and self.mode == '分割标注':
+            self.add_object_sep_2_id()
+    
+    def add_object_sep(self):
+        self.keyframes[self.progress_slider.value()] = 'object_sep'
+        self.update_keyframe_bar()
+    
+    def add_object_sep_2_id(self):
+        self.start_frame_to_object_id = dict()
+        object_size = max([len(i) for i in self.tracking_points_sam.values()]) - 1
+        
+        if object_size > 1:
+            if object_size != len(self.keyframes) + 1:
+                self.smart_message('关键帧分割和物体标注数量不一致！')
+                return
+            dialog = ObjectAnnotationDialog(object_size, self.frame_count, self.keyframes, self)
+            if dialog.exec_() == QDialog.Accepted:
+                self.start_frame_to_object_id = dialog.get_result()
+            else:
+                return
+        elif object_size == 1:
+            if len(self.keyframes) > 0:
+                self.smart_message('关键帧分割和物体标注数量不一致！')
+                return
+            dialog = ObjectAnnotationDialog(object_size, self.frame_count, self.keyframes, self)
+            if dialog.exec_() == QDialog.Accepted:
+                self.start_frame_to_object_id = dialog.get_result()
+            else:
+                return
+        else:
+            self.smart_message('无物体标注')
+            return
+    
     def delete_keyframe(self):
         info, lang = self.get_clip_description()
         if info[0] is not None:
@@ -1369,6 +1477,7 @@ class VideoPlayer(QWidget):
             self.lang_anno[anno_loc] = (cached_lang, prim, select_lang)
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {cached_lang}")
         else:
+            self.delete_keyframe()
             return 
         
     def add_video_description(self):
@@ -1396,84 +1505,6 @@ class VideoPlayer(QWidget):
             return anno_loc, self.lang_anno[anno_loc[1]]
         return (None, None), (None, None, None)
 
-    def synthesis_image(self, masks_list, video, positive_points_dict):
-        obj_id = list(positive_points_dict.keys())
-        cmap = plt.get_cmap("tab10")
-        colors = [np.array([*cmap(int(i))[:3]]) for i in obj_id]
-        mask_image = [torch.tensor(masks_list[i]).permute(2, 3, 1, 0).numpy() * (
-            colors[i].reshape(1, 1, -1)[:, :, :, None]
-        ) for i in range(len(masks_list))]
-        
-        mask_image = [
-            (torch.tensor(mask_image[i]).permute(3, 0, 1, 2) * 255)
-            .numpy()
-            .astype(np.uint8) for i in range(len(mask_image))
-        ]
-        mix_image_list = []
-
-        # add mask to video
-        width, height = mask_image[0][0].shape[1], mask_image[0][0].shape[0]
-        text_scale = width / 800
-        assert video.shape[0] == mask_image[0].shape[0], f"video shape: {video.shape[0]}, mask shape: {mask_image[0].shape[0]}"
-        for i in range(video.shape[0]):      
-            for obj_id in range(len(masks_list)):
-                mix_mask = masks_list[obj_id][i][0][:, :, None].repeat(3, axis=2)
-                mix_image = np.where(mix_mask, mask_image[obj_id][i], video[i]) if obj_id == 0 else np.where(mix_mask, mask_image[obj_id][i], mix_image)
-                # write number on the mask in the image by cv2
-                loc = np.where(mix_mask[:,:,0])
-                if len(loc[0]) == 0:
-                    continue
-                loc = (np.mean(loc[0]).astype(int), np.mean(loc[1]).astype(int))
-                
-                if loc[0] < 10:
-                    loc = (10, loc[1])
-                if loc[1] < 10:
-                    loc = (loc[0], 10)
-                if loc[0] > height - 10:
-                    loc = (height - 10, loc[1])
-                if loc[1] > width - 10:
-                    loc = (loc[0], width - 10)
-                
-                cv2.putText(mix_image, str(obj_id+1), (loc[1], loc[0]), cv2.FONT_HERSHEY_TRIPLEX, text_scale, (255, 255, 255), 1, cv2.LINE_AA)
-            
-            mix_image_list.append(mix_image)
-        
-        return mix_image_list
-
-    def get_sam_mask_on_image_forward(self, model_config, masks_list, video):
-        is_video = model_config["is_video"]
-        select_frame = model_config["select_frame"]
-        direction = model_config["direction"]
-        positive_points_dict = model_config["positive_points"]
-        if not is_video:
-            video = video[select_frame:select_frame + 1]
-            mask_list = masks_list[:, select_frame:select_frame + 1]
-        elif direction == "forward":
-            video = video[select_frame:]
-            mask_list = masks_list[:, select_frame:]
-        elif direction == "backward":
-            video = video[:select_frame+1][::-1]
-            mask_list = masks_list[:, :select_frame+1]
-        select_frame = 0
-        
-        mask_image = self.synthesis_image(mask_list, video, positive_points_dict)
-        if mask_image is None:
-            return None
-        
-        return mask_image
-
-    def get_sam_mask_on_image_bidirection(self, model_config, masks_list, video):
-        model_config["direction"] = "forward"
-        mask_images_forward = self.get_sam_mask_on_image_forward(model_config, masks_list, video)
-        if model_config['select_frame'] == 0:
-            mask_image = mask_images_forward
-        else:
-            model_config["direction"] = "backward"
-            mask_images_backward = self.get_sam_mask_on_image_forward(model_config, masks_list, video)
-            mask_image = mask_images_backward[::-1][:-1] + mask_images_forward
-        
-        return mask_image
-        
     def get_clip_lang_anno(self):
         lang = self.video_2_lang['task_stepsC']
         out_text = ''
