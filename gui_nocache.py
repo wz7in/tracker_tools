@@ -1421,7 +1421,7 @@ class VideoPlayer(QWidget):
     
     def delete_keyframe(self):
         info, lang = self.get_clip_description()
-        if info[0] is not None:
+        if info[0] is not None and lang[0] is not None:
             # remove the description
             idx, loc = info
             self.lang_anno.pop(loc)
@@ -1461,25 +1461,22 @@ class VideoPlayer(QWidget):
         # Create a dialog to get the description from the user
         dialog = TextInputDialog(cached_lang, self, False, self.video_2_lang, origin_text=origin_text)
         if dialog.exec_() == QDialog.Accepted:
-            select_lang = dialog.get_select_lang()
-            if select_lang == '空':
-                select_gt_id = [i for i in self.video_2_lang['task_stepsC'] if self.video_2_lang['task_stepsC'][i] == cached_lang]
-                if len(select_gt_id) > 0:
-                    self.video_2_lang['task_stepsC'][select_gt_id[0]] = None
-            elif len(select_lang) > 0:
-                self.video_2_lang['task_stepsC'][select_lang] = None
+            select_gt_id = [i for i in self.video_2_lang['task_stepsC'] if self.video_2_lang['task_stepsC'][i] == cached_lang]
+            if len(select_gt_id) > 0:
+                self.video_2_lang['task_stepsC'][select_gt_id[0]] = None
 
             cached_lang = dialog.get_text()
             prim = dialog.get_prim()
             select_lang = dialog.get_select_lang()
             if select_lang != '空':
                 self.video_2_lang['task_stepsC'][select_lang] = cached_lang
+                
             self.lang_anno[anno_loc] = (cached_lang, prim, select_lang)
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {cached_lang}")
         else:
             self.delete_keyframe()
-            return 
-        
+            return
+    
     def add_video_description(self):
         # Create a dialog to get the description from the user
         if (0, 0) in self.lang_anno:
@@ -1509,7 +1506,8 @@ class VideoPlayer(QWidget):
         lang = self.video_2_lang['task_stepsC']
         out_text = ''
         for i in enumerate(lang):
-            out_text += f"{i[0]+1}: {i[1]}\n"
+            if i[1] not in BASE_CLIP_DES:
+                out_text += f"{i[0]+1}: {i[1]}\n"
         return out_text.strip()
 
 
