@@ -1,23 +1,17 @@
 import sys
 import os
-import json
 import argparse
-import pickle
 from PyQt5.QtCore import QPoint, QTimer, Qt
 import cv2
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QMessageBox, QLineEdit, QDialogButtonBox, QTextEdit, QGridLayout,
                              QLabel, QSlider, QDialog, QHBoxLayout, QFrame, QProgressDialog, QRadioButton, QPlainTextEdit, QComboBox, QFileDialog)
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
-from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread, QThreadPool, pyqtSlot, QRunnable, QObject
+from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread
 
 import yaml
 from client_utils import request_video_and_anno, save_anno
 import numpy as np
-import torch
-import matplotlib.pyplot as plt
 
-ROOT_DIR = '/mnt/hwfile/OpenRobotLab/wangziqin/data/rh20t/'
-CACHE_NUMBER = 3
 BASE_CLIP_DES = ['拿着[某物体]从[某位置1]移动到[某位置2]', '在[某位置]抓起[某物体]', '把[某物体]放置到[某位置]', '在[某位置]按压[某物体]', '把[某物体]推到[某位置]', '把[某物体]拉到[某位置]', '[顺时针/逆时针/向下/向上/向左/向右]转动[某物体]',  '把[某物体]倒到[某位置]', '在[某位置]折叠[某物体]', '在[某位置]滑动[某物体]', '把[某物体]插入到[某位置]', '在[某位置]摇动[某物体]', '在[某位置]敲击[某物体]', '把[某物体]扔到[某位置]', '在[某位置]操作[某物体]']
 BASE_PRIM = ['拿着物体移动','抓起','放下','按压','推动','拉动','转动','倾倒','折叠','滑动','插入','摇动','敲击','扔掉','其余操作']
 
@@ -45,7 +39,7 @@ class TextInputDialog(QDialog):
             
             self.prim_title = QLabel('请选择语言标注:', self)
             self.prim_select = QComboBox()
-            self.prim_select.setFixedSize(400, 20)
+            self.prim_select.setFixedSize(400, 30)
             self.mode_title.show()
             self.mode_select.show()
             clip_des = [i for i in task_stepsC_list if clip_lang_C_options[i] is None or i == origin_text] + ['空']
@@ -56,7 +50,7 @@ class TextInputDialog(QDialog):
             self.prim_select.addItems(BASE_CLIP_DES)
             self.prim_select.setMaxVisibleItems(30)            
             
-            self.mode_select.setFixedSize(400, 20)
+            self.mode_select.setFixedSize(400, 30)
             self.mode_select.addItems(primitive_action_options_C)
             # 添加分割线
             self.mode_select.insertSeparator(len(primitive_action_options_C))
@@ -104,7 +98,7 @@ class TextInputDialog(QDialog):
         
     def get_text(self):
         return self.language_edit.toPlainText() if not self.is_video else self.text_input.toPlainText()
-      
+    
     def get_prim(self):
         if not self.is_video:
             return self.mode_select.currentText()
@@ -182,7 +176,7 @@ class VideoPlayer(QWidget):
         self.mode, self.username = self.mode_choose()
         if self.mode == '语言标注':
             #resize the window
-            self.setFixedSize(1200, 600)
+            self.setFixedSize(1300, 700)
         ###########################################################
         #################### Video Area Layout ####################
         ###########################################################
@@ -209,19 +203,19 @@ class VideoPlayer(QWidget):
         self.frame_position_label = QLabel(self)
         self.frame_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.frame_position_label.setAlignment(Qt.AlignCenter)
-        self.frame_position_label.setFixedSize(80, 20)
+        self.frame_position_label.setFixedSize(80, 30)
         self.frame_position_label.hide()
         video_control_button_layout = QHBoxLayout()
         # Video position label
         self.video_position_label = QLabel(self)
         self.video_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.video_position_label.setAlignment(Qt.AlignCenter)
-        self.video_position_label.setFixedSize(300, 20)
+        self.video_position_label.setFixedSize(300, 30)
         video_control_button_layout.addWidget(self.video_position_label)
         self.hist_num_label = QLabel(self)
         self.hist_num_label.setStyleSheet("background-color: #E3E3E3;")
         self.hist_num_label.setAlignment(Qt.AlignCenter)
-        self.hist_num_label.setFixedSize(300, 20)
+        self.hist_num_label.setFixedSize(300, 30)
         video_control_button_layout.addWidget(self.hist_num_label)
         # Next video button
         video_layout.addLayout(video_control_button_layout)
@@ -233,7 +227,7 @@ class VideoPlayer(QWidget):
         # 复选框
         self.is_pre_button = QRadioButton("回退", self)
         self.is_pre_button.setChecked(False)
-        self.is_pre_button.setFixedSize(50, 20)
+        self.is_pre_button.setFixedSize(80, 30)
         self.is_pre_button.setDisabled(True)
         # 检测状态变化
         self.is_pre_button.toggled.connect(self.set_button_text)
@@ -278,7 +272,7 @@ class VideoPlayer(QWidget):
         self.sam_obj_pos_label = QLabel(self)
         self.sam_obj_pos_label.setStyleSheet("background-color: #E3E3E3;")
         self.sam_obj_pos_label.setAlignment(Qt.AlignCenter)
-        self.sam_obj_pos_label.setFixedSize(150, 20)
+        self.sam_obj_pos_label.setFixedSize(150, 30)
         # sam next object button
         self.sam_next_button = QPushButton("下一个/添加物体", self)
         self.sam_next_button.clicked.connect(self.next_sam_object)
@@ -335,7 +329,7 @@ class VideoPlayer(QWidget):
         # Video Language annotation show area
         self.video_lang_input = QTextEdit(self)
         self.video_lang_input.setReadOnly(True)
-        self.video_lang_input.setFixedSize(500, 70)
+        self.video_lang_input.setFixedSize(610, 70)
         self.video_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
         lang_layout.addWidget(self.video_lang_input)
         
@@ -354,7 +348,7 @@ class VideoPlayer(QWidget):
         # Video clip Language annotation show area
         self.clip_lang_input = QTextEdit(self)
         self.clip_lang_input.setReadOnly(True)
-        self.clip_lang_input.setFixedSize(500, 100)
+        self.clip_lang_input.setFixedSize(610, 100)
         self.clip_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
         lang_layout.addWidget(self.clip_lang_input)
         
@@ -398,7 +392,7 @@ class VideoPlayer(QWidget):
             # Video clip Language annotation show area
             self.preview_clip_lang_input = QTextEdit(self)
             self.preview_clip_lang_input.setReadOnly(True)
-            self.preview_clip_lang_input.setFixedSize(500, 160)
+            self.preview_clip_lang_input.setFixedSize(610, 160)
             self.preview_clip_lang_input.setStyleSheet("background-color: #E3E3E3; font-weight: bold;")
             preview_clip_layout.addWidget(self.preview_clip_lang_input)
             lang_layout.addLayout(preview_clip_layout)
@@ -424,11 +418,19 @@ class VideoPlayer(QWidget):
             tips_input.setText(item)
             tips_input.setReadOnly(True)
             tips_input.setSizeAdjustPolicy(QTextEdit.AdjustToContents)
-            tips_input.setFixedSize(120, 25)
-            if i >= 4:
-                self.tips_text_layout.addWidget(tips_input, 1, i-4)
+            if self.mode != '语言标注':
+                tips_input.setFixedSize(240, 30)
             else:
-                self.tips_text_layout.addWidget(tips_input, 0, i)
+                tips_input.setFixedSize(200, 30)
+            
+            if self.mode == '语言标注':
+                num_per_line = 3
+            else:
+                num_per_line = 2
+
+            line = int(i // num_per_line)
+            self.tips_text_layout.addWidget(tips_input, line, i % num_per_line)
+        
         self.toolbar_layout.addLayout(self.tips_text_layout)
         main_layout.addLayout(self.toolbar_layout)
         self.setLayout(main_layout)
@@ -492,10 +494,10 @@ class VideoPlayer(QWidget):
         # 在主窗口上直接弹出对话框，选择模式
         dialog = QDialog(self)
         dialog.setWindowTitle("选择模式")
-        dialog.setFixedSize(300, 150)
+        dialog.setFixedSize(400, 150)
         # center the dialog
-        desktop = QApplication.desktop()
-        dialog.move(int(desktop.width()*0.4), int(desktop.height()*0.4))
+        # desktop = QApplication.desktop()
+        # dialog.move(int(desktop.width()*0.4), int(desktop.height()*0.4))
         
         dialog_layout = QVBoxLayout()
         dialog.setLayout(dialog_layout)
@@ -508,7 +510,7 @@ class VideoPlayer(QWidget):
         
         user_name = QLineEdit(self)
         user_name.setPlaceholderText("请输入用户名")
-        user_name.setFixedSize(150, 20)
+        user_name.setFixedSize(170, 30)
         username_layout.addWidget(user_name)
         dialog_layout.addLayout(username_layout)
         
@@ -520,7 +522,7 @@ class VideoPlayer(QWidget):
         mode_select = QComboBox()
         mode_select.addItem('分割标注')
         mode_select.addItem('语言标注')
-        mode_select.setFixedSize(170, 20)
+        mode_select.setFixedSize(170, 30)
         mode_layout.addWidget(mode_select)
         dialog_layout.addLayout(mode_layout)
         
@@ -1529,6 +1531,6 @@ if __name__ == "__main__":
     
     app = QApplication(sys.argv)
     player = VideoPlayer(args)
-    player.resize(1000, 550)  # Adjusted size to accommodate the toolbar
+    player.resize(1100, 600)  # Adjusted size to accommodate the toolbar
     player.show()
     sys.exit(app.exec_())
