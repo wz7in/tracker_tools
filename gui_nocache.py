@@ -1421,13 +1421,15 @@ class VideoPlayer(QWidget):
     
     def delete_keyframe(self):
         info, lang = self.get_clip_description()
-        if info[0] is not None and lang[0] is not None:
+        if info[0] is not None:
             # remove the description
             idx, loc = info
             self.lang_anno.pop(loc)
             self.keyframes.pop(loc[0])
             self.keyframes.pop(loc[1])
             for i in self.video_2_lang['task_stepsC']:
+                if lang[0] is None:
+                    continue
                 if self.video_2_lang['task_stepsC'][i] == lang[0]:
                     self.video_2_lang['task_stepsC'][i] = None
             self.update_keyframe_bar()
