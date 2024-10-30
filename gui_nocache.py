@@ -178,7 +178,7 @@ class VideoPlayer(QWidget):
             #resize the window
             self.setFixedSize(1300, 700)
         else:
-            self.setFixedSize(1700, 700)
+            self.setFixedSize(1800, 730)
         ###########################################################
         #################### Video Area Layout ####################
         ###########################################################
@@ -205,7 +205,7 @@ class VideoPlayer(QWidget):
         self.frame_position_label = QLabel(self)
         self.frame_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.frame_position_label.setAlignment(Qt.AlignCenter)
-        self.frame_position_label.setFixedSize(80, 30)
+        self.frame_position_label.setFixedSize(90, 30)
         self.frame_position_label.hide()
         video_control_button_layout = QHBoxLayout()
         # Video position label
@@ -213,9 +213,9 @@ class VideoPlayer(QWidget):
         self.video_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.video_position_label.setAlignment(Qt.AlignCenter)
         if self.mode != '语言标注':
-            self.video_position_label.setFixedSize(120, 30)
+            self.video_position_label.setFixedSize(130, 30)
         else:
-            self.video_position_label.setFixedSize(300, 30)
+            self.video_position_label.setFixedSize(310, 30)
         video_control_button_layout.addWidget(self.video_position_label)
         self.hist_num_label = QLabel(self)
         self.hist_num_label.setStyleSheet("background-color: #E3E3E3;")
@@ -223,28 +223,28 @@ class VideoPlayer(QWidget):
         if self.mode != '语言标注':
             self.hist_num_label.setFixedSize(160, 30)
         else:
-            self.hist_num_label.setFixedSize(300, 30)
+            self.hist_num_label.setFixedSize(310, 30)
         video_control_button_layout.addWidget(self.hist_num_label)
         
         if self.mode != '语言标注':
             self.one_num_label = QLabel(self)
             self.one_num_label.setStyleSheet("background-color: #E3E3E3;")
             self.one_num_label.setAlignment(Qt.AlignCenter)
-            self.one_num_label.setFixedSize(265, 30)
+            self.one_num_label.setFixedSize(270, 30)
             video_control_button_layout.addWidget(self.one_num_label)
         
         if self.mode != '语言标注':
             self.two_num_label = QLabel(self)
             self.two_num_label.setStyleSheet("background-color: #E3E3E3;")
             self.two_num_label.setAlignment(Qt.AlignCenter)
-            self.two_num_label.setFixedSize(265, 30)
+            self.two_num_label.setFixedSize(270, 30)
             video_control_button_layout.addWidget(self.two_num_label)
         
         if self.mode != '语言标注':
             self.three_num_label = QLabel(self)
             self.three_num_label.setStyleSheet("background-color: #E3E3E3;")
             self.three_num_label.setAlignment(Qt.AlignCenter)
-            self.three_num_label.setFixedSize(265, 30)
+            self.three_num_label.setFixedSize(270, 30)
             video_control_button_layout.addWidget(self.three_num_label)
         
         # Next video button
@@ -255,23 +255,10 @@ class VideoPlayer(QWidget):
         self.play_button.clicked.connect(self.toggle_playback)
         video_load_button_layout.addWidget(self.play_button)
         
-        # 选择是否完成
-        if self.mode != '语言标注':
-            self.is_finished_button = QCheckBox("完成", self)
-            self.is_finished_button.setChecked(False)
-            self.is_finished_button.setFixedSize(80, 30)
-            video_load_button_layout.addWidget(self.is_finished_button)
-            self.is_finished_button.show()
-            self.is_hard_sample_button = QCheckBox("困难样本", self)
-            self.is_hard_sample_button.setChecked(False)
-            self.is_hard_sample_button.setFixedSize(80, 30)
-            video_load_button_layout.addWidget(self.is_hard_sample_button)
-            self.is_hard_sample_button.show()
-        
         # 标注次数选择
         if self.mode != '语言标注':
             self.re_annotation_text = QLabel("质检次数: ", self)
-            self.re_annotation_text.setFixedSize(100, 30)
+            self.re_annotation_text.setFixedSize(80, 30)
             video_load_button_layout.addWidget(self.re_annotation_text)
             self.re_annotation_button = QComboBox()
             self.re_annotation_button.setFixedSize(80, 30)
@@ -280,14 +267,39 @@ class VideoPlayer(QWidget):
             self.re_annotation_button.addItem('2')
             self.re_annotation_button.addItem('3')
             self.re_annotation_button.setCurrentIndex(self.time)
+            text_sep = QLabel(' ')
+            text_sep.setFixedSize(40, 30)
             video_load_button_layout.addWidget(self.re_annotation_button)
+            video_load_button_layout.addWidget(text_sep)
+            # video_load_button_layout.addStretch(1)
             # 检测状态变化
             self.re_annotation_button.currentIndexChanged.connect(self.check_re_anno)
+        
+        # 选择是否完成
+        if self.mode != '语言标注':
+            self.is_finished_button = QCheckBox("完成", self)
+            self.is_finished_button.setChecked(False)
+            self.is_finished_button.setFixedSize(80, 30)
+            self.is_finished_button.toggled.connect(self.change_hard_button)
+            video_load_button_layout.addWidget(self.is_finished_button)
+            self.is_finished_button.hide()
+            
+            self.is_hard_sample_button = QCheckBox("困难样本", self)
+            self.is_hard_sample_button.setChecked(False)
+            self.is_hard_sample_button.setFixedSize(110, 30)
+            self.is_hard_sample_button.toggled.connect(self.change_finish_button)
+            video_load_button_layout.addWidget(self.is_hard_sample_button)
+            self.is_hard_sample_button.hide()
+
+            text_sep = QLabel(' ')
+            text_sep.setFixedSize(40, 30)
+            video_load_button_layout.addWidget(text_sep)
+        
         
         # 复选框
         self.is_pre_button = QCheckBox("回退", self)
         self.is_pre_button.setChecked(False)
-        self.is_pre_button.setFixedSize(80, 30)
+        self.is_pre_button.setFixedSize(100, 30)
         self.is_pre_button.setDisabled(True)
         # 检测状态变化
         self.is_pre_button.toggled.connect(self.set_button_text)
@@ -543,6 +555,18 @@ class VideoPlayer(QWidget):
         
         self.next_video_and_load(is_first=True)
         
+    def change_finish_button(self):
+        if self.is_hard_sample_button.isChecked():
+            self.is_finished_button.setDisabled(True)
+        else:
+            self.is_finished_button.setDisabled(False)
+    
+    def change_hard_button(self):
+        if self.is_finished_button.isChecked():
+            self.is_hard_sample_button.setDisabled(True)
+        else:
+            self.is_hard_sample_button.setDisabled(False)
+    
     def closeEvent(self, event):
         # 弹出一个消息框询问用户是否确认关闭窗口
         reply = QMessageBox.question(
@@ -563,6 +587,7 @@ class VideoPlayer(QWidget):
     def check_re_anno(self):
         if self.re_annotation_button.currentText() == '0':
             self.is_pre_button.setDisabled(False)
+            self.is_finished_button.show()
             self.is_hard_sample_button.hide()
         elif self.re_annotation_button.currentText() == '1':
             if not self.has_one_anno:
@@ -571,6 +596,7 @@ class VideoPlayer(QWidget):
                 return
             else:
                 self.is_pre_button.setDisabled(False)
+                self.is_finished_button.show()
                 self.is_hard_sample_button.hide()
         elif self.re_annotation_button.currentText() == '2':
             if not self.has_two_anno:
@@ -579,6 +605,7 @@ class VideoPlayer(QWidget):
                 return
             else:
                 self.is_pre_button.setDisabled(False)
+                self.is_finished_button.show()
                 self.is_hard_sample_button.hide()
         elif self.re_annotation_button.currentText() == '3':
             if not self.has_three_anno:
@@ -587,6 +614,7 @@ class VideoPlayer(QWidget):
                 return
             else:
                 self.is_pre_button.setDisabled(False)
+                self.is_finished_button.show()
                 self.is_hard_sample_button.show()
               
     def get_exe_path(self, relative_path):
@@ -1067,6 +1095,7 @@ class VideoPlayer(QWidget):
         self.save_path = save_path
         self.video_path = video_path
         self.hist_num = hist_num
+        self.hist_num_label.setText(f"已标注视频: {self.hist_num}")
         if self.mode != '语言标注':
             self.two_anno_num = two_anno_num
             self.one_anno_num = one_anno_num
@@ -1074,7 +1103,6 @@ class VideoPlayer(QWidget):
             self.all_one_anno_num = all_one_anno_num
             self.all_two_anno_num = all_two_anno_num
             self.all_three_anno_num = all_three_anno_num
-            self.hist_num_label.setText(f"已标注视频: {self.hist_num}")
             self.one_num_label.setText(f"一次质检(可用/剩余): {self.one_anno_num}/{self.all_one_anno_num}")
             self.two_num_label.setText(f"二次质检(可用/剩余): {self.two_anno_num}/{self.all_two_anno_num}")
             self.three_num_label.setText(f"三次质检(可用/剩余): {self.three_anno_num}/{self.all_three_anno_num}")
@@ -1135,7 +1163,9 @@ class VideoPlayer(QWidget):
             self.check_re_anno()
             self.button_param_select.setCurrentIndex(0)
             self.is_finished_button.setChecked(False)
+            self.is_finished_button.setDisabled(False)
             self.is_hard_sample_button.setChecked(False)
+            self.is_hard_sample_button.setDisabled(False)
         self.seek_video()
         # for align the keyframe display length
         if 0 not in self.keyframes and self.is_first:
