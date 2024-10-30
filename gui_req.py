@@ -11,7 +11,7 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread, QThreadPool, pyqtSlot, QRunnable, QObject
 
 import yaml
-from client_utils import request_sam, request_cotracker, request_video
+from client_utils import request_sam, request_cotracker, request_video, request_video_and_lang
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -20,16 +20,9 @@ ROOT_DIR = '/mnt/hwfile/OpenRobotLab/wangziqin/data/rh20t/'
 CACHE_NUMBER = 3
 BASE_PRIM = ['拿着物体移动','抓起','放下','按压','推动','拉动','转动','倾倒','折叠','滑动','插入','摇动','敲击','扔掉','其余操作']
 
-def load_anno_file(anno_file, out_file):
-    if anno_file.endswith('.json'):
-        video_anno = json.load(open(anno_file, 'r'))
-    elif anno_file.endswith('.npy'):
-        video_anno = np.load(anno_file, allow_pickle=True).item()
-    if os.path.exists(out_file):
-        anno = pickle.load(open(out_file, 'rb'))
-    else:
-        anno = {}
-    return list(video_anno.keys()), video_anno, anno
+def load_anno_file(anno_file):
+    video_json = json.load(open(anno_file))
+    return list(video_json.keys()), video_json
 
 class TextInputDialog(QDialog):
     
@@ -555,6 +548,7 @@ class VideoPlayer(QWidget):
         self.lang_anno = dict()
         self.video_cache = DictQueue()
         self.max_point_num = dict()
+        self.video_2_lang = dict()
         self.anno_mode = 'sam'
         self.cur_frame_idx = self.progress_slider.value()
         self.keyframes = {} 
@@ -620,7 +614,8 @@ class VideoPlayer(QWidget):
             self.file_out = file_path_label.text()
             if self.file_path is not None:
                 try:
-                    self.video_list, self.video_anno_list, self.all_anno = load_anno_file(self.file_path, out_path)
+                    self.video_list, self.video_anno_list = load_anno_file(self.file_path, out_path)
+                    self.all_anno = dict()
                 except Exception as e:
                     # alert error message
                     QMessageBox.critical(self, "Error", "加载标注文件失败，请检查文件格式是否正确")
@@ -783,27 +778,52 @@ class VideoPlayer(QWidget):
     
     def request_video(self):
         if self.video_cache.get(self.video_list[self.cur_video_idx-1]) is not None:
-            video = self.video_cache.get(self.video_list[self.cur_video_idx-1])       
+            if self.mode != '语言标注':
+                video = self.video_cache.get(self.video_list[self.cur_video_idx-1])
+                return video
+            else:
+                video, lang = self.video_cache.get(self.video_list[self.cur_video_idx-1])
+                return video, lang
         else:
             try:
                 self.requesting_item = self.video_list[self.cur_video_idx-1]
-                video = request_video(os.path.join(ROOT_DIR, self.video_list[self.cur_video_idx-1]))
+                video_path = os.path.join(ROOT_DIR, self.video_list[self.cur_video_idx-1])
+                if self.mode != "语言标注":
+                    video = request_video(video_path)
+                else:
+                    lang_path = os.path.join(ROOT_DIR, self.video_anno_list[self.video_list[self.cur_video_idx-1]])
+                    video, lang = request_video_and_lang(video_path, lang_path)
                 self.requesting_item = None
             except Exception as e:
                 self.requesting_item = None
                 return None
             if video is None:
                 return None
-            self.video_cache.add(self.video_list[self.cur_video_idx-1], video)
-        return video
+            if self.mode != "语言标注":
+                self.video_cache.add(self.video_list[self.cur_video_idx-1], video)
+                return video
+            else:
+                self.video_cache.add(self.video_list[self.cur_video_idx-1], (video, lang))
+                self.video_2_lang[self.video_list[self.cur_video_idx-1]] = lang
+                return video, lang
+        
     
     def request_video_by_name(self, name):
         if self.video_cache.get(name) is None:
             self.requesting_item = name
             print(f"Loading video {name}")
-            video = request_video(os.path.join(ROOT_DIR, name))
-            self.requesting_item = None
-        return video, name
+            if self.mode != '语言标注':
+                video = request_video(os.path.join(ROOT_DIR, name))
+                self.requesting_item = None
+                return video, name
+            else:
+                video_path = os.path.join(ROOT_DIR, name)
+                lang_path = os.path.join(ROOT_DIR, self.video_anno_list[name])
+                video, lang = request_video_and_lang(video_path, lang_path)
+                self.video_2_lang[name] = lang
+                self.requesting_item = None
+                return video, lang, name
+        
     
     def request_video_quiet(self, name):
         video_thread = self.request_video_async_quiet(name)
@@ -1189,7 +1209,13 @@ class VideoPlayer(QWidget):
         if self.last_frame is not None:
             self.draw_image()
     
-    def load_video_callback(self, video):
+    def load_video_callback(self, res):
+        if self.mode != '语言标注':
+            video = res
+        else:
+            video, lang = res
+            self.video_2_lang[self.video_list[self.cur_video_idx-1]] = lang
+        
         if video is not None:
             self.load_video(video)
             self.progress.close()
@@ -1330,14 +1356,15 @@ class VideoPlayer(QWidget):
             self.remove_keyframe()
         
         # load global language annotation
-        video_anno_json = self.video_anno_list[self.video_list[self.cur_video_idx-1]]
-        global_instruction_C = video_anno_json['instructionC'] if 'instructionC' in video_anno_json else ''
-        if (0, 0) not in self.lang_anno[self.video_list[self.cur_video_idx-1]] or self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] == '':
-            self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] = global_instruction_C
-
-        desc = self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)]
-        self.video_lang_input.setText(f"视频描述: {desc}")
         if self.mode == '语言标注':
+            video_anno_json = self.video_2_lang[self.video_list[self.cur_video_idx-1]]
+            # TODO check exist
+            global_instruction_C = video_anno_json['instructionC'] if 'instructionC' in video_anno_json else ''
+            if (0, 0) not in self.lang_anno[self.video_list[self.cur_video_idx-1]] or self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] == '':
+                self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)] = global_instruction_C
+
+            desc = self.lang_anno[self.video_list[self.cur_video_idx-1]][(0, 0)]
+            self.video_lang_input.setText(f"视频描述: {desc}")
             self.preview_clip_lang_input.setText(self.get_clip_lang_anno())
         
         return 1
@@ -1974,21 +2001,22 @@ class VideoPlayer(QWidget):
         else:
             cached_lang, prim = '', ''
         # Create a dialog to get the description from the user
-        dialog = TextInputDialog(cached_lang, self, False, self.video_anno_list[self.video_list[self.cur_video_idx-1]], ann_id=anno_id)
+        # TODO check exist
+        dialog = TextInputDialog(cached_lang, self, False, self.video_2_lang[self.video_list[self.cur_video_idx-1]], ann_id=anno_id)
         select_lang = dialog.get_select_lang()
         if dialog.exec_() == QDialog.Accepted:
             if select_lang == '空':
-                select_gt_id = [i for i in self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'] if self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'][i] == anno_id]
+                select_gt_id = [i for i in self.video_2_lang[self.video_list[self.cur_video_idx-1]]['clip_langC'] if self.video_2_lang[self.video_list[self.cur_video_idx-1]]['clip_langC'][i] == anno_id]
                 if len(select_gt_id) > 0:
-                    self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_gt_id[0]] = None
+                    self.video_2_lang[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_gt_id[0]] = None
             elif len(select_lang) > 0:
-                self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_lang] = None
+                self.video_2_lang[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_lang] = None
             
             cached_lang = dialog.get_text()
             prim = dialog.get_prim()
             select_lang = dialog.get_select_lang()
             if select_lang != '空':
-                self.video_anno_list[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_lang] = anno_id
+                self.video_2_lang[self.video_list[self.cur_video_idx-1]]['clip_langC'][select_lang] = anno_id
             self.lang_anno[self.video_list[self.cur_video_idx-1]][anno_loc] = (cached_lang, prim)
             self.clip_lang_input.setText(f"开始帧: {anno_loc[0]+1} | 结束帧: {anno_loc[1]+1}\n原子动作: {prim}\n动作描述: {cached_lang}")
         else:

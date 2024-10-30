@@ -5,10 +5,10 @@ import requests, io, zipfile
 import imageio
 from cotracker.utils.visualizer import Visualizer
 
-base_url = 'http://10.140.1.64:{port}'
+base_url = 'http://{ip}:{port}'
 
-def request_sam(config, mode):
-    root_url = base_url.format(port=random.randint(10050, 10059))
+def request_sam(ip, config, mode):
+    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
     if mode == "online":
         url = f"{root_url}/predict_sam"
     else:
@@ -34,34 +34,8 @@ def request_sam(config, mode):
         print("Error:", response)
         return None, None
 
-def request_cotracker(sam_config, co_tracker_config):
-    root_url = base_url.format(port=random.randint(10050, 10059))
-    url = f"{root_url}/predict_cotracker"    
-
-    model_config = {
-        "sam": sam_config,
-        "cotracker": co_tracker_config,
-    }
-    response = requests.post(
-        url, data=json.dumps(model_config), headers={"content-type": "application/json"}
-    )
-
-    if response.status_code == 200:
-        zip_io = io.BytesIO(response.content)
-        with zipfile.ZipFile(zip_io, "r") as zf:
-            with zf.open("pred_tracks.npy") as f:
-                pred_tracks = np.load(f)
-            with zf.open("pred_visibility.npy") as f:
-                pred_visibility = np.load(f)
-            with zf.open("images.npy") as f:
-                images = np.load(f)
-        return pred_tracks, pred_visibility, np.transpose(np.squeeze(images, axis=0), (0,2,3,1))[...,::-1]
-    else:
-        print("Error:", response)
-        return None, None, None
-
-def request_video(video_path):
-    root_url = base_url.format(port=random.randint(10050, 10059))
+def request_video(ip, video_path):
+    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
     url = f"{root_url}/get_video"
     config = {
         "video_path": video_path,
@@ -83,8 +57,8 @@ def request_video(video_path):
         print("Error:", response)
         return None
 
-def request_video_and_anno(mode, username, button_mode, last_video_path):
-    root_url = base_url.format(port=random.randint(10050, 10059))
+def request_video_and_anno(ip, mode, username, button_mode, last_video_path, re_anno=0):
+    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
     if mode == 'lang':
         url = f"{root_url}/get_video_and_anno_lang"
     else:
@@ -93,7 +67,8 @@ def request_video_and_anno(mode, username, button_mode, last_video_path):
     config = {
         "username": username,
         "mode": button_mode,
-        "last_video_path": last_video_path
+        "last_video_path": last_video_path,
+        "re_anno": re_anno
     }
     
     response = requests.post(
@@ -122,25 +97,38 @@ def request_video_and_anno(mode, username, button_mode, last_video_path):
                     video_path = f.read().decode("utf-8")
                 with zf.open("history_number") as f:
                     history_number = f.read().decode("utf-8")
+                if mode != 'lang':
+                    with zf.open("all_one_anno_num") as f:
+                        all_one_anno_num = int(f.read().decode("utf-8"))
+                    with zf.open("one_anno_num") as f:
+                        one_anno_num = int(f.read().decode("utf-8"))
+                    with zf.open("all_two_anno_num") as f:
+                        all_two_anno_num = int(f.read().decode("utf-8"))
+                    with zf.open("two_anno_num") as f:
+                        two_anno_num = int(f.read().decode("utf-8"))
+                    with zf.open("all_three_anno_num") as f:
+                        all_three_anno_num = int(f.read().decode("utf-8"))
+                    with zf.open("three_anno_num") as f:
+                        three_anno_num = int(f.read().decode("utf-8"))
         
-        if not is_finished:
-            frames = []
-            reader = imageio.get_reader(video, "mp4")
-            for _, im in enumerate(reader):
-                frames.append(np.array(im))
-            if mode == 'lang':
-                return np.stack(frames), anno, save_path, video_path, int(history_number)
-            else:
-                return np.stack(frames), save_path, video_path, int(history_number)
+        frames = []
+        reader = imageio.get_reader(video, "mp4")
+        for _, im in enumerate(reader):
+            frames.append(np.array(im))
+        if mode == 'lang':
+            return np.stack(frames), anno, save_path, video_path, int(history_number)
+        else:
+            return np.stack(frames), save_path, video_path, int(history_number), \
+                one_anno_num, all_one_anno_num, two_anno_num, all_two_anno_num, three_anno_num, all_three_anno_num
     else:
         print("Error:", response)
         if mode == 'lang':
             return None, None, None, None, 0
         else:
-            return None, None, None, 0
+            return None, None, None, 0, 0, 0
 
-def save_anno(save_path, anno):
-    root_url = base_url.format(port=random.randint(10050, 10059))
+def save_anno(ip, save_path, anno):
+    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
     url = f"{root_url}/save_anno"
     # save as binary file
     anno_bytes = io.BytesIO()
@@ -151,6 +139,24 @@ def save_anno(save_path, anno):
         "save_path": (None, save_path),
     }
     response = requests.post(url, files=files)
+    if response.status_code == 200:
+        return True
+    else:
+        print("Error:", response)
+        return False
+
+def drawback_video(ip, video_path, mode):
+    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
+    if mode == 'lang':
+        url = f"{root_url}/drawback_video_lang"
+    else:
+        url = f"{root_url}/drawback_video_sam"
+    config = {
+        "video_path": video_path,
+    }
+    response = requests.post(
+        url, data=json.dumps(config), headers={"content-type": "application/json"}
+    )
     if response.status_code == 200:
         return True
     else:

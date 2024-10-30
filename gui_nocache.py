@@ -4,15 +4,15 @@ import argparse
 from PyQt5.QtCore import QPoint, QTimer, Qt
 import cv2
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QMessageBox, QLineEdit, QDialogButtonBox, QTextEdit, QGridLayout,
-                             QLabel, QSlider, QDialog, QHBoxLayout, QFrame, QProgressDialog, QRadioButton, QPlainTextEdit, QComboBox, QFileDialog)
+                             QLabel, QSlider, QDialog, QHBoxLayout, QFrame, QProgressDialog, QRadioButton, QPlainTextEdit, QComboBox, QCheckBox)
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread
 
 import yaml
-from client_utils import request_video_and_anno, save_anno
+from client_utils import request_video_and_anno, save_anno, drawback_video
 import numpy as np
 
-BASE_CLIP_DES = ['拿着[某物体]从[某位置1]移动到[某位置2]', '在[某位置]抓起[某物体]', '把[某物体]放置到[某位置]', '在[某位置]按压[某物体]', '把[某物体]推到[某位置]', '把[某物体]拉到[某位置]', '[顺时针/逆时针/向下/向上/向左/向右]转动[某物体]',  '把[某物体]倒到[某位置]', '在[某位置]折叠[某物体]', '在[某位置]滑动[某物体]', '把[某物体]插入到[某位置]', '在[某位置]摇动[某物体]', '在[某位置]敲击[某物体]', '把[某物体]扔到[某位置]', '在[某位置]操作[某物体]']
+BASE_CLIP_DES = ['拿着[某物体]从[某位置1]移动到[某位置2]', '在[某位置]抓起[某物体]', '把[某物体]放置到[某位置]', '在[某位置]按压[某物体]', '把[某物体]推到[某位置]', '把[某物体]拉到[某位置]', '[顺时针/逆时针]转动[某物体]',  '把[某物体]倒到[某位置]', '在[某位置]折叠[某物体]', '在[某位置]滑动[某物体]', '把[某物体]插入到[某位置]', '在[某位置]摇动[某物体]', '在[某位置]敲击[某物体]', '把[某物体]扔到[某位置]', '在[某位置]操作[某物体]']
 BASE_PRIM = ['拿着物体移动','抓起','放下','按压','推动','拉动','转动','倾倒','折叠','滑动','插入','摇动','敲击','扔掉','其余操作']
 
 class TextInputDialog(QDialog):
@@ -173,10 +173,12 @@ class VideoPlayer(QWidget):
         #################### Main Area Layout ####################
         ###########################################################
         main_layout = QHBoxLayout()     
-        self.mode, self.username = self.mode_choose()
+        self.mode, self.username, self.ip_address, self.time = self.mode_choose()
         if self.mode == '语言标注':
             #resize the window
             self.setFixedSize(1300, 700)
+        else:
+            self.setFixedSize(1700, 700)
         ###########################################################
         #################### Video Area Layout ####################
         ###########################################################
@@ -210,13 +212,41 @@ class VideoPlayer(QWidget):
         self.video_position_label = QLabel(self)
         self.video_position_label.setStyleSheet("background-color: #E3E3E3;")
         self.video_position_label.setAlignment(Qt.AlignCenter)
-        self.video_position_label.setFixedSize(300, 30)
+        if self.mode != '语言标注':
+            self.video_position_label.setFixedSize(120, 30)
+        else:
+            self.video_position_label.setFixedSize(300, 30)
         video_control_button_layout.addWidget(self.video_position_label)
         self.hist_num_label = QLabel(self)
         self.hist_num_label.setStyleSheet("background-color: #E3E3E3;")
         self.hist_num_label.setAlignment(Qt.AlignCenter)
-        self.hist_num_label.setFixedSize(300, 30)
+        if self.mode != '语言标注':
+            self.hist_num_label.setFixedSize(160, 30)
+        else:
+            self.hist_num_label.setFixedSize(300, 30)
         video_control_button_layout.addWidget(self.hist_num_label)
+        
+        if self.mode != '语言标注':
+            self.one_num_label = QLabel(self)
+            self.one_num_label.setStyleSheet("background-color: #E3E3E3;")
+            self.one_num_label.setAlignment(Qt.AlignCenter)
+            self.one_num_label.setFixedSize(265, 30)
+            video_control_button_layout.addWidget(self.one_num_label)
+        
+        if self.mode != '语言标注':
+            self.two_num_label = QLabel(self)
+            self.two_num_label.setStyleSheet("background-color: #E3E3E3;")
+            self.two_num_label.setAlignment(Qt.AlignCenter)
+            self.two_num_label.setFixedSize(265, 30)
+            video_control_button_layout.addWidget(self.two_num_label)
+        
+        if self.mode != '语言标注':
+            self.three_num_label = QLabel(self)
+            self.three_num_label.setStyleSheet("background-color: #E3E3E3;")
+            self.three_num_label.setAlignment(Qt.AlignCenter)
+            self.three_num_label.setFixedSize(265, 30)
+            video_control_button_layout.addWidget(self.three_num_label)
+        
         # Next video button
         video_layout.addLayout(video_control_button_layout)
         video_load_button_layout = QHBoxLayout()
@@ -224,14 +254,45 @@ class VideoPlayer(QWidget):
         self.play_button.setCheckable(True)
         self.play_button.clicked.connect(self.toggle_playback)
         video_load_button_layout.addWidget(self.play_button)
+        
+        # 选择是否完成
+        if self.mode != '语言标注':
+            self.is_finished_button = QCheckBox("完成", self)
+            self.is_finished_button.setChecked(False)
+            self.is_finished_button.setFixedSize(80, 30)
+            video_load_button_layout.addWidget(self.is_finished_button)
+            self.is_finished_button.show()
+            self.is_hard_sample_button = QCheckBox("困难样本", self)
+            self.is_hard_sample_button.setChecked(False)
+            self.is_hard_sample_button.setFixedSize(80, 30)
+            video_load_button_layout.addWidget(self.is_hard_sample_button)
+            self.is_hard_sample_button.show()
+        
+        # 标注次数选择
+        if self.mode != '语言标注':
+            self.re_annotation_text = QLabel("质检次数: ", self)
+            self.re_annotation_text.setFixedSize(100, 30)
+            video_load_button_layout.addWidget(self.re_annotation_text)
+            self.re_annotation_button = QComboBox()
+            self.re_annotation_button.setFixedSize(80, 30)
+            self.re_annotation_button.addItem('0')
+            self.re_annotation_button.addItem('1')
+            self.re_annotation_button.addItem('2')
+            self.re_annotation_button.addItem('3')
+            self.re_annotation_button.setCurrentIndex(self.time)
+            video_load_button_layout.addWidget(self.re_annotation_button)
+            # 检测状态变化
+            self.re_annotation_button.currentIndexChanged.connect(self.check_re_anno)
+        
         # 复选框
-        self.is_pre_button = QRadioButton("回退", self)
+        self.is_pre_button = QCheckBox("回退", self)
         self.is_pre_button.setChecked(False)
         self.is_pre_button.setFixedSize(80, 30)
         self.is_pre_button.setDisabled(True)
         # 检测状态变化
         self.is_pre_button.toggled.connect(self.set_button_text)
         video_load_button_layout.addWidget(self.is_pre_button)
+        
         
         self.next_button = QPushButton("保存并进行下一次标注", self)
         self.next_button.clicked.connect(self.next_video_and_load)
@@ -260,10 +321,17 @@ class VideoPlayer(QWidget):
         fline.setFrameShadow(QFrame.Sunken)
         fline.setStyleSheet("color: grey;")  # Set the same color as the title
         function_title_layout.addWidget(fline)
+        self.sam_object_layout = QHBoxLayout()
         if self.mode != '语言标注':
             self.toolbar_layout.addLayout(function_title_layout)
-        # run button
-        self.sam_object_layout = QHBoxLayout()
+            # run button
+            self.button_param_select = QComboBox()
+            self.button_param_select.addItem('双向视频模式')
+            self.button_param_select.addItem('前向视频模式')
+            self.button_param_select.addItem('反向视频模式')
+            self.button_param_select.setFixedSize(150, 30)
+            self.sam_object_layout.addWidget(self.button_param_select)
+        
         # sam pre object button
         self.sam_pre_button = QPushButton("上一个物体", self)
         self.sam_pre_button.clicked.connect(self.pre_sam_object)
@@ -475,6 +543,52 @@ class VideoPlayer(QWidget):
         
         self.next_video_and_load(is_first=True)
         
+    def closeEvent(self, event):
+        # 弹出一个消息框询问用户是否确认关闭窗口
+        reply = QMessageBox.question(
+            self, '确认退出', '你确定要退出吗？',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            # 用户选择 Yes，允许关闭窗口
+            event.accept()
+            if self.mode == '语言标注':
+                drawback_video(self.ip_address, self.video_path, 'lang')
+            else:
+                drawback_video(self.ip_address, self.video_path, 'sam')
+        else:
+            # 用户选择 No，阻止窗口关闭
+            event.ignore()
+    
+    def check_re_anno(self):
+        if self.re_annotation_button.currentText() == '0':
+            self.is_pre_button.setDisabled(False)
+            self.is_hard_sample_button.hide()
+        elif self.re_annotation_button.currentText() == '1':
+            if not self.has_one_anno:
+                self.smart_message("暂无需要一次复检的视频，请耐心等待")
+                self.re_annotation_button.setCurrentIndex(0)
+                return
+            else:
+                self.is_pre_button.setDisabled(False)
+                self.is_hard_sample_button.hide()
+        elif self.re_annotation_button.currentText() == '2':
+            if not self.has_two_anno:
+                self.smart_message("暂无需要二次复检的视频，请耐心等待")
+                self.re_annotation_button.setCurrentIndex(0)
+                return
+            else:
+                self.is_pre_button.setDisabled(False)
+                self.is_hard_sample_button.hide()
+        elif self.re_annotation_button.currentText() == '3':
+            if not self.has_three_anno:
+                self.smart_message("暂无需要三次复检的视频，请耐心等待")
+                self.re_annotation_button.setCurrentIndex(0)
+                return
+            else:
+                self.is_pre_button.setDisabled(False)
+                self.is_hard_sample_button.show()
+              
     def get_exe_path(self, relative_path):
         try:
             base_path = sys._MEIPASS
@@ -494,7 +608,7 @@ class VideoPlayer(QWidget):
         # 在主窗口上直接弹出对话框，选择模式
         dialog = QDialog(self)
         dialog.setWindowTitle("选择模式")
-        dialog.setFixedSize(400, 150)
+        dialog.setFixedSize(400, 300)
         # center the dialog
         # desktop = QApplication.desktop()
         # dialog.move(int(desktop.width()*0.4), int(desktop.height()*0.4))
@@ -506,36 +620,79 @@ class VideoPlayer(QWidget):
         # 添加用户名字输入框
         username_layout = QHBoxLayout()
         username_label = QLabel("请输入用户名: ", self)
+        username_label.setFixedSize(180, 30)
         username_layout.addWidget(username_label)
         
         user_name = QLineEdit(self)
         user_name.setPlaceholderText("请输入用户名")
-        user_name.setFixedSize(170, 30)
+        user_name.setFixedSize(180, 30)
         username_layout.addWidget(user_name)
         dialog_layout.addLayout(username_layout)
         
+        ip_address_layout = QHBoxLayout()
+        ip_address_label = QLabel("请输入服务器地址: ", self)
+        ip_address_label.setFixedSize(180, 30)
+        ip_address_layout.addWidget(ip_address_label)
+        
+        ip_address = QLineEdit(self)
+        ip_address.setPlaceholderText("请输入服务器地址")
+        ip_address.setFixedSize(180, 30)
+        ip_address_layout.addWidget(ip_address)
+        dialog_layout.addLayout(ip_address_layout)
         
         mode_layout = QHBoxLayout()
         mode_label = QLabel("请选择标注模式: ", self)
+        mode_label.setFixedSize(180, 30)
         mode_layout.addWidget(mode_label)
         
-        mode_select = QComboBox()
-        mode_select.addItem('分割标注')
-        mode_select.addItem('语言标注')
-        mode_select.setFixedSize(170, 30)
-        mode_layout.addWidget(mode_select)
+        self.mode_select = QComboBox()
+        self.mode_select.addItem('语言标注')
+        self.mode_select.addItem('分割标注')
+        self.mode_select.setFixedSize(180, 30)
+        self.mode_select.currentIndexChanged.connect(self.check_anno_mode)
+        mode_layout.addWidget(self.mode_select)
         dialog_layout.addLayout(mode_layout)
         
+        time_layout = QHBoxLayout()
+        self.time_label = QLabel("请选择质检次数: ", self)
+        self.time_label.setFixedSize(180, 30)
+        time_layout.addWidget(self.time_label)
+        self.time_select = QComboBox()
+        self.time_select.addItem('0')
+        self.time_select.addItem('1')
+        self.time_select.addItem('2')
+        self.time_select.addItem('3')
+        self.time_select.setFixedSize(180, 30)
+        time_layout.addWidget(self.time_select)
+        dialog_layout.addLayout(time_layout)
+
+        self.time_label.hide()
+        self.time_select.hide()
         
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         button_box.accepted.connect(dialog.accept)
         button_box.rejected.connect(dialog.reject)
         dialog_layout.addWidget(button_box)
         if dialog.exec_() == QDialog.Accepted:
-            return mode_select.currentText(), user_name.text()
+            
+            if len(user_name.text()) == 0 or len(ip_address.text()) == 0:
+                self.smart_message("用户名和服务器地址不能为空")
+                sys.exit()
+            
+            return self.mode_select.currentText(), user_name.text(), ip_address.text(), int(self.time_select.currentText())
         else:
             sys.exit()
     
+    def check_anno_mode(self):
+        if self.mode_select.currentText() == '分割标注':
+            self.time_label.show()
+            self.time_select.show()
+        else:
+            self.time_label.hide()
+            self.time_select.hide()
+
+
+
     def pre_sam_object(self):
         if self.sam_object_id[self.progress_slider.value()] > 0:
             self.sam_object_id[self.progress_slider.value()] -= 1
@@ -611,6 +768,19 @@ class VideoPlayer(QWidget):
             elif self.is_pre_button.isChecked():
                 self.clear_video()
                 self.load_video_async()
+            
+            elif self.is_finished_button.isChecked() and self.mode != '语言标注': 
+                res = self.save_sam_anno()
+                if res == -1:
+                    return
+                self.load_video_async()
+            
+            elif self.is_hard_sample_button.isChecked() and self.mode != '语言标注':
+                res = self.save_sam_anno()
+                if res == -1:
+                    return
+                self.load_video_async()
+            
             else:
                 self.smart_message("请先完成当前视频的标注")
 
@@ -703,15 +873,17 @@ class VideoPlayer(QWidget):
                 self.is_pre_button.setChecked(False)
                 self.button_mode = 'next'
             if self.mode == '语言标注':
-                return request_video_and_anno('lang', self.username, self.button_mode, self.video_path)
+                return request_video_and_anno(self.ip_address, 'lang', self.username, self.button_mode, self.video_path)
             else:
-                return request_video_and_anno('sam', self.username, self.button_mode, self.video_path)
+                re_anno = int(self.re_annotation_button.currentText())
+                return request_video_and_anno(self.ip_address, 'sam', self.username, self.button_mode, self.video_path, re_anno)
         
         except Exception as e:
+            print(e)
             if self.mode == '语言标注':
-                return None, None
+                return None, None, None, None, None
             else:
-                return None
+                return None, None, None, None, 0, 0
                
     def request_video_async(self):
         class VideoThread(QThread):
@@ -757,7 +929,7 @@ class VideoPlayer(QWidget):
         lang_res['video_path'] = self.video_path
         lang_res['button_mode'] = self.button_mode
 
-        save_anno(self.save_path, lang_res)
+        save_anno(self.ip_address, self.save_path, lang_res)
         self.progress.close()
         self.lang_anno = dict()
         return 0
@@ -769,11 +941,11 @@ class VideoPlayer(QWidget):
                 dict(pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[])
             ]
         self.lang_anno = dict()
-    
         self.sam_next_button.setDisabled(False)
         self.sam_pre_button.setDisabled(True)
         self.sam_object_id[self.progress_slider.value()] = 0
         self.sam_obj_pos_label.setText("标注物体: 1/1")
+        self.sam_frame_id = set()
         
         if self.last_frame is not None:
             self.draw_image()
@@ -826,6 +998,17 @@ class VideoPlayer(QWidget):
                 self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['raw_neg'].pop()
                 self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['labels'].pop()
         
+        if len(self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['pos']) == 0 and len(self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['neg']) == 0:
+            
+            cur_obj_id = self.sam_object_id[self.progress_slider.value()]
+            if cur_obj_id > 0:
+                self.tracking_points_sam[self.progress_slider.value()].pop(cur_obj_id)
+                self.sam_object_id[self.progress_slider.value()] -= 1
+        
+            cur_id = self.sam_object_id[self.progress_slider.value()] + 1
+            all_object_size = len(self.tracking_points_sam[self.progress_slider.value()])
+            self.sam_obj_pos_label.setText(f"物体标注: {cur_id}/{all_object_size}")
+            
         if self.last_frame is not None:
             self.draw_image()
      
@@ -838,8 +1021,17 @@ class VideoPlayer(QWidget):
             return
         cur_obj_id = self.sam_object_id[self.progress_slider.value()]
         self.tracking_points_sam[self.progress_slider.value()].pop(cur_obj_id)
-            
-        self.sam_object_id[self.progress_slider.value()] -= 1
+        
+        if cur_obj_id > 0:
+            self.sam_object_id[self.progress_slider.value()] -= 1
+        else:
+            self.sam_object_id[self.progress_slider.value()] = 0
+        
+        if len(self.tracking_points_sam[self.progress_slider.value()]) == 0:
+            self.tracking_points_sam[self.progress_slider.value()].append(
+                dict(pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[])
+            )
+            self.sam_object_id[self.progress_slider.value()]=0
         
         cur_id = self.sam_object_id[self.progress_slider.value()] + 1
         all_object_size = len(self.tracking_points_sam[self.progress_slider.value()])
@@ -850,14 +1042,14 @@ class VideoPlayer(QWidget):
     
     def load_video_callback(self, res):
         if res == 0:
-            self.smart_message("视频已经完成标注，标注完成")
+            self.smart_message("暂无需要标注的视频，请耐心等待")
             sys.exit()
         
         if self.mode != '语言标注':
-            video, save_path, video_path, hist_num = res
+            video, save_path, video_path, hist_num, \
+                one_anno_num, all_one_anno_num, two_anno_num, all_two_anno_num, three_anno_num, all_three_anno_num = res
         else:
             video, lang, save_path, video_path, hist_num = res
-            
             if lang['has_ori_instruction']:
                 self.video_2_lang = lang['annotation']
                 task_stepsC = self.video_2_lang['task_stepsC'].copy()
@@ -875,7 +1067,20 @@ class VideoPlayer(QWidget):
         self.save_path = save_path
         self.video_path = video_path
         self.hist_num = hist_num
-        self.hist_num_label.setText(f"已标注视频: {self.hist_num}")
+        if self.mode != '语言标注':
+            self.two_anno_num = two_anno_num
+            self.one_anno_num = one_anno_num
+            self.three_anno_num = three_anno_num
+            self.all_one_anno_num = all_one_anno_num
+            self.all_two_anno_num = all_two_anno_num
+            self.all_three_anno_num = all_three_anno_num
+            self.hist_num_label.setText(f"已标注视频: {self.hist_num}")
+            self.one_num_label.setText(f"一次质检(可用/剩余): {self.one_anno_num}/{self.all_one_anno_num}")
+            self.two_num_label.setText(f"二次质检(可用/剩余): {self.two_anno_num}/{self.all_two_anno_num}")
+            self.three_num_label.setText(f"三次质检(可用/剩余): {self.three_anno_num}/{self.all_three_anno_num}")
+            self.has_one_anno = one_anno_num > 0
+            self.has_two_anno = two_anno_num > 0
+            self.has_three_anno = three_anno_num > 0
         
         if video is not None:
             self.load_video(video)
@@ -924,8 +1129,13 @@ class VideoPlayer(QWidget):
         # self.pre_f_button.setDisabled(True)
         self.max_point_num = 0
         self.hist_num = dict()
-        self.sam_frame_id = None
+        self.sam_frame_id = set()
         self.start_frame_to_object_id = dict()
+        if self.mode != '语言标注':
+            self.check_re_anno()
+            self.button_param_select.setCurrentIndex(0)
+            self.is_finished_button.setChecked(False)
+            self.is_hard_sample_button.setChecked(False)
         self.seek_video()
         # for align the keyframe display length
         if 0 not in self.keyframes and self.is_first:
@@ -1055,24 +1265,48 @@ class VideoPlayer(QWidget):
     
     # 自动播放视频，再点击停止播放
     def autoplayorstop(self):
-        pass
-        # if self.is_stop:
-        #     self.play_button.setText("暂停")
-        #     self.current_frame = self.progress_slider.value()
-        #     self.timer.start(30)
-        # else:
-        #     self.play_button.setText("播放")
-        #     self.timer.stop()
+        if self.is_stop:
+            self.play_button.setText("暂停")
+            self.current_frame = self.progress_slider.value()
+            self.timer.start(30)
+        else:
+            self.play_button.setText("播放")
+            self.timer.stop()
 
     def set_sam_config(self):
         tracking_points = self.tracking_points_sam
-        select_frame = self.sam_frame_id
+        select_frames = list(self.sam_frame_id)
+        self.sam_config['video_path'] = self.video_path
+        self.sam_config['user'] = self.username
         
-        if self.sam_object_id is None:
+        if self.is_hard_sample_button.isChecked() and self.is_finished_button.isChecked():
+            self.smart_message("困难样本不可标注为完成，请检查")
+            return -1
+        
+        if self.is_finished_button.isChecked():
+            self.sam_config['is_finished'] = True
+            self.sam_config['is_hard_sample'] = False
+            return 0
+        
+        if self.is_hard_sample_button.isChecked():
+            self.sam_config['is_hard_sample'] = True
+            self.sam_config['is_finished'] = False
+            return 0
+        
+        if len(select_frames) == 0:
             self.smart_message("请先标注物体")
             return -1
         
-        if len(tracking_points[select_frame]) - 1 > 0 and len(tracking_points[select_frame]) - 1 != len(list(self.keyframes.keys())) + 1:
+        if len(select_frames) > 1 and self.button_param_select.currentText() != '双向视频模式':
+            self.smart_message("多帧模式仅支持双向视频模式，请检查")
+            return -1
+        
+        for i in select_frames[1:]:
+            if len(tracking_points[i]) != len(tracking_points[select_frames[0]]):
+                self.smart_message(f"第{i}帧标注物体数量与第0帧不匹配, 请检查")
+                return -1
+        
+        if len(tracking_points[select_frames[0]]) > 0 and len(tracking_points[select_frames[0]]) != len(list(self.keyframes.keys())) + 1:
             self.smart_message("标注物体数量与关键帧数量不匹配, 请检查")
             return -1
         
@@ -1080,34 +1314,43 @@ class VideoPlayer(QWidget):
         negative_points_all = {}
         labels_all = {}
         
-        direction = 'bidirection'
+        if self.button_param_select.currentText() == '双向视频模式':
+            direction = 'bidirection' 
+        elif self.button_param_select.currentText() == '前向视频模式':
+            direction = 'forward'
+        else:
+            direction = 'backward'
         is_video = True
-        frame_pts = tracking_points[select_frame]
         
-        # select all objects
-        for obj_id, obj_pts in enumerate(frame_pts):
-            positive_points, negative_points, labels = [], [], []
-            if obj_pts['raw_pos'] != []:
-                positive_points.extend([[pt.x(), pt.y()] for pt in obj_pts['raw_pos']])
-            if obj_pts['raw_neg'] != []:
-                negative_points.extend([[pt.x(), pt.y()] for pt in obj_pts['raw_neg']])
-            if (obj_pts['raw_pos'] != []) or (obj_pts['raw_neg'] != []):
-                labels.extend(obj_pts['labels'])
-            
-            positive_points_all[obj_id] = positive_points
-            negative_points_all[obj_id] = negative_points
-            labels_all[obj_id] = labels
+        for select_frame in select_frames:
+            positive_points_all[select_frame] = {}
+            negative_points_all[select_frame] = {}
+            labels_all[select_frame] = {}
+            frame_pts = tracking_points[select_frame]
+            # select all objects
+            for obj_id, obj_pts in enumerate(frame_pts):
+                positive_points, negative_points, labels = [], [], []
+                if obj_pts['raw_pos'] != []:
+                    positive_points.extend([[pt.x(), pt.y()] for pt in obj_pts['raw_pos']])
+                if obj_pts['raw_neg'] != []:
+                    negative_points.extend([[pt.x(), pt.y()] for pt in obj_pts['raw_neg']])
+                if (obj_pts['raw_pos'] != []) or (obj_pts['raw_neg'] != []):
+                    labels.extend(obj_pts['labels'])
+                
+                positive_points_all[select_frame][obj_id] = positive_points
+                negative_points_all[select_frame][obj_id] = negative_points
+                labels_all[select_frame][obj_id] = labels
         
         self.sam_config['is_video'] = is_video
         self.sam_config['direction'] = direction
         self.sam_config['positive_points'] = positive_points_all
         self.sam_config['negative_points'] = negative_points_all
         self.sam_config['labels'] = labels_all
-        self.sam_config['select_frame'] = select_frame
-        self.sam_config['user'] = self.username
-        self.sam_config['video_path'] = self.video_path
+        self.sam_config['select_frames'] = select_frames
         self.sam_config['button_mode'] = self.button_mode
         self.sam_config['start_frame_2_obj_id'] = self.start_frame_to_object_id
+        self.sam_config['is_finished'] = False
+        self.sam_config['is_hard_sample'] = False
         
         return 0
     
@@ -1127,7 +1370,7 @@ class VideoPlayer(QWidget):
         self.progress.setCancelButton(None)
         self.progress.setMinimumDuration(0)
         self.progress.show()
-        save_anno(self.save_path, self.sam_config.copy())
+        save_anno(self.ip_address, self.save_path, self.sam_config.copy())
         self.progress.close()
         return 0
               
@@ -1150,7 +1393,7 @@ class VideoPlayer(QWidget):
             self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['pos'].append(click_position)
             self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['labels'].append(1)
             self.sam_next_button.setDisabled(False)
-            self.sam_frame_id = self.progress_slider.value()
+            self.sam_frame_id.add(self.progress_slider.value())
                 
         elif event.button() == Qt.RightButton and self.last_frame is not None:
             pos = self.video_label.mapFromGlobal(event.globalPos())
@@ -1164,7 +1407,7 @@ class VideoPlayer(QWidget):
             self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['raw_neg'].append(original_position)
             self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['labels'].append(-1)
             self.sam_next_button.setDisabled(False)
-            self.sam_frame_id = self.progress_slider.value()
+            self.sam_frame_id.add(self.progress_slider.value())
             
         self.draw_image()
     
@@ -1228,8 +1471,9 @@ class VideoPlayer(QWidget):
             # check if the last keyframe is 'end'
             if len(self.keyframes) > 0 and list(self.keyframes.values())[-1] == 'start':
                 if not debug:
-                    self.is_stop = False
-                    self.autoplayorstop()
+                    # self.is_stop = False
+                    # self.autoplayorstop()
+                    pass
                 self.smart_message('请标注结束帧')
                 return -1
             
@@ -1237,15 +1481,17 @@ class VideoPlayer(QWidget):
                 for i in list(self.lang_anno.keys()):
                     if i[0] <= current_frame and i[1] >= current_frame and i[0] != i[1]:
                         if not debug:
-                            self.is_stop = False
-                            self.autoplayorstop()
+                            # self.is_stop = False
+                            # self.autoplayorstop()
+                            pass
                         self.smart_message('请勿在上一个视频段中标记')
                         return -1
             
             if current_frame in self.keyframes and self.keyframes[current_frame] == 'end':
                 if not debug:
-                    self.is_stop = False
-                    self.autoplayorstop()
+                    # self.is_stop = False
+                    # self.autoplayorstop()
+                    pass
                 self.smart_message('请勿重复标记')
                 return -1
             if not self.is_first:
@@ -1253,8 +1499,9 @@ class VideoPlayer(QWidget):
             self.update_keyframe_bar()
             self.update_frame_position_label()
             if not debug:
-                self.is_stop = True
-                self.autoplayorstop()
+                # self.is_stop = True
+                # self.autoplayorstop()
+                pass
             
             self.last_start_frame = current_frame
         
@@ -1262,15 +1509,17 @@ class VideoPlayer(QWidget):
             # check if the last keyframe is 'start'
             if len(self.keyframes) > 0 and list(self.keyframes.values())[-1] == 'end':
                 if not debug:
-                    self.is_stop = False
-                    self.autoplayorstop()
+                    # self.is_stop = False
+                    # self.autoplayorstop()
+                    pass
                 self.smart_message('请标记开始帧')
                 return -1
             
             if current_frame in self.keyframes and self.keyframes[current_frame] == 'start':
                 if not debug:
-                    self.is_stop = False
-                    self.autoplayorstop()
+                    # self.is_stop = False
+                    # self.autoplayorstop()
+                    pass
                 self.smart_message('请勿重复标记')
                 return -1
             
@@ -1278,15 +1527,17 @@ class VideoPlayer(QWidget):
                 for i in list(self.lang_anno.keys()):
                     if i[0] <= current_frame and i[1] >= current_frame:
                         if not debug:
-                            self.is_stop = False
-                            self.autoplayorstop()
+                            # self.is_stop = False
+                            # self.autoplayorstop()
+                            pass
                         self.smart_message('请勿在上一个视频段中标记')
                         return -1
 
                     if self.last_start_frame <= i[0] and i[1] <= current_frame and i[0] != 0:
                         if not debug:
-                            self.is_stop = False
-                            self.autoplayorstop()
+                            # self.is_stop = False
+                            # self.autoplayorstop()
+                            pass
                         self.keyframes.pop(self.last_start_frame)
                         self.update_keyframe_bar()
                         self.last_start_frame = None
@@ -1296,16 +1547,18 @@ class VideoPlayer(QWidget):
             if len(self.keyframes) == 0:
                 self.smart_message('请先标记开始帧')
                 if not debug:
-                    self.is_stop = False
-                    self.autoplayorstop()
+                    # self.is_stop = False
+                    # self.autoplayorstop()
+                    pass
                 return -1
             
             self.keyframes[current_frame] = 'end'
             self.update_keyframe_bar()
             self.update_frame_position_label()
             if not debug:
-                self.is_stop = False
-                self.autoplayorstop()
+                # self.is_stop = False
+                # self.autoplayorstop()
+                pass
             self.add_frame_discribtion()
         
         return 0
