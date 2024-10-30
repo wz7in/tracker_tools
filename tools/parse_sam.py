@@ -4,7 +4,7 @@ import cv2, os, yaml
 import multiprocessing
 import concurrent.futures
 from tap_sam.vis_utils import extract_frames
-from sam_tools import predict_sam_video, predict_sam_video_multiframe, get_sam_mask_on_image_forward, get_sam_mask_on_image_forward_mutli
+from sam_tools import predict_sam_video, predict_sam_video_multiframe, get_sam_mask_on_image_forward_mutli
 from tqdm import tqdm
 import argparse, json
 from tap_sam.sam import Sam
