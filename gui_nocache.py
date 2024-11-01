@@ -134,7 +134,7 @@ class ObjectAnnotationDialog(QDialog):
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         # add object size input box
         self.object_size = object_size
-        start_frame_id = [0] + list(keyframes.keys())
+        start_frame_id = [0] + keyframes
         for idx, start_idx in enumerate(start_frame_id):
             
             if idx == len(start_frame_id)-1:
@@ -552,6 +552,7 @@ class VideoPlayer(QWidget):
         self.sam_point_anno = dict()
         self.lang_only_anno = dict()
         self.video_path = None
+        self.frame_contact = set()
         
         self.next_video_and_load(is_first=True)
         
@@ -1027,7 +1028,7 @@ class VideoPlayer(QWidget):
                 self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['labels'].pop()
         
         if len(self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['pos']) == 0 and len(self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['neg']) == 0:
-            
+            self.sam_frame_id.remove(self.progress_slider.value())
             cur_obj_id = self.sam_object_id[self.progress_slider.value()]
             if cur_obj_id > 0:
                 self.tracking_points_sam[self.progress_slider.value()].pop(cur_obj_id)
@@ -1060,6 +1061,7 @@ class VideoPlayer(QWidget):
                 dict(pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[])
             )
             self.sam_object_id[self.progress_slider.value()]=0
+            self.sam_frame_id.remove(self.progress_slider.value())
         
         cur_id = self.sam_object_id[self.progress_slider.value()] + 1
         all_object_size = len(self.tracking_points_sam[self.progress_slider.value()])
@@ -1159,6 +1161,9 @@ class VideoPlayer(QWidget):
         self.hist_num = dict()
         self.sam_frame_id = set()
         self.start_frame_to_object_id = dict()
+        self.frame_contact = set()
+        self.use_L = False
+        
         if self.mode != '语言标注':
             self.check_re_anno()
             self.button_param_select.setCurrentIndex(0)
@@ -1166,6 +1171,7 @@ class VideoPlayer(QWidget):
             self.is_finished_button.setDisabled(False)
             self.is_hard_sample_button.setChecked(False)
             self.is_hard_sample_button.setDisabled(False)
+        
         self.seek_video()
         # for align the keyframe display length
         if 0 not in self.keyframes and self.is_first:
@@ -1261,6 +1267,8 @@ class VideoPlayer(QWidget):
                 keyframe_type = '结束'
             elif keyframe_type.lower() == 'object_sep':
                 keyframe_type = '分割'
+            elif keyframe_type.lower() == 'object_contact':
+                keyframe_type = '接触'
             
             self.frame_position_label.setText(f"帧: {frame_number+1}({keyframe_type})")
         else:
@@ -1327,6 +1335,10 @@ class VideoPlayer(QWidget):
             self.smart_message("请先标注物体")
             return -1
         
+        if not self.use_L:
+            self.smart_message("完成标注物体后，请按下L键确认物体绑定顺序")
+            return -1
+        
         if len(select_frames) > 1 and self.button_param_select.currentText() != '双向视频模式':
             self.smart_message("多帧模式仅支持双向视频模式，请检查")
             return -1
@@ -1336,8 +1348,12 @@ class VideoPlayer(QWidget):
                 self.smart_message(f"第{i}帧标注物体数量与第0帧不匹配, 请检查")
                 return -1
         
-        if len(tracking_points[select_frames[0]]) > 0 and len(tracking_points[select_frames[0]]) != len(list(self.keyframes.keys())) + 1:
+        object_sep = [i for i in self.keyframes if self.keyframes[i] == 'object_sep']
+        if len(tracking_points[select_frames[0]]) > 0 and len(tracking_points[select_frames[0]]) != len(object_sep) + 1:
             self.smart_message("标注物体数量与关键帧数量不匹配, 请检查")
+            return -1
+        
+        if self.align_contact_frame_with_object_sep() == -1:
             return -1
         
         positive_points_all = {}
@@ -1379,8 +1395,12 @@ class VideoPlayer(QWidget):
         self.sam_config['select_frames'] = select_frames
         self.sam_config['button_mode'] = self.button_mode
         self.sam_config['start_frame_2_obj_id'] = self.start_frame_to_object_id
+        self.sam_config['frame_contact_2_obj_id'] = self.frame_contact_to_object_id
         self.sam_config['is_finished'] = False
         self.sam_config['is_hard_sample'] = False
+        
+        print(self.start_frame_to_object_id)
+        print(self.frame_contact_to_object_id)
         
         return 0
     
@@ -1620,8 +1640,10 @@ class VideoPlayer(QWidget):
         if self.selected_keyframe is not None:
             frame_to_remove = self.selected_keyframe
             if frame_to_remove in self.keyframes:
+                if self.keyframes[frame_to_remove] == 'object_contact':
+                    self.frame_contact.remove(frame_to_remove)
                 self.keyframes.pop(frame_to_remove)
-                self.update_keyframe_bar()           
+                self.update_keyframe_bar()
 
     def update_keyframe_bar(self):
         # Clear the keyframe bar
@@ -1633,6 +1655,7 @@ class VideoPlayer(QWidget):
             x_position = int((frame / self.frame_count) * self.keyframe_bar.width())
             color = QColor('red') if key_type == 'start' else QColor('blue')
             color = color if key_type != 'object_sep' else QColor('black')
+            color = color if key_type != 'object_contact' else QColor('green')
             painter.fillRect(QRect(x_position, 0, 5, self.keyframe_bar.height()), color)
         painter.end()
 
@@ -1656,6 +1679,10 @@ class VideoPlayer(QWidget):
         elif key == Qt.Key_S and self.mode == '分割标注':
             self.add_object_sep()
             self.update_frame_position_label()
+        elif key == Qt.Key_W and self.mode == '分割标注':
+            self.add_object_contact_frame()
+            self.update_frame_position_label()
+            self.frame_contact.add(self.progress_slider.value())
         elif key == Qt.Key_Backspace and self.mode == '语言标注':
             self.selected_keyframe = self.progress_slider.value()
             # self.remove_keyframe()
@@ -1679,24 +1706,30 @@ class VideoPlayer(QWidget):
         self.keyframes[self.progress_slider.value()] = 'object_sep'
         self.update_keyframe_bar()
     
+    def add_object_contact_frame(self):
+        self.keyframes[self.progress_slider.value()] = 'object_contact'
+        self.update_keyframe_bar()
+    
     def add_object_sep_2_id(self):
+        self.use_L = True
         self.start_frame_to_object_id = dict()
-        object_size = max([len(i) for i in self.tracking_points_sam.values()]) - 1
+        object_size = max([len(i) for i in self.tracking_points_sam.values()])
+        key_frames = [k for (k, v) in self.keyframes.items() if v == 'object_sep']
         
         if object_size > 1:
-            if object_size != len(self.keyframes) + 1:
+            if object_size != len(key_frames) + 1:
                 self.smart_message('关键帧分割和物体标注数量不一致！')
                 return
-            dialog = ObjectAnnotationDialog(object_size, self.frame_count, self.keyframes, self)
+            dialog = ObjectAnnotationDialog(object_size, self.frame_count, key_frames, self)
             if dialog.exec_() == QDialog.Accepted:
                 self.start_frame_to_object_id = dialog.get_result()
             else:
                 return
         elif object_size == 1:
-            if len(self.keyframes) > 0:
+            if len(key_frames) > 0:
                 self.smart_message('关键帧分割和物体标注数量不一致！')
                 return
-            dialog = ObjectAnnotationDialog(object_size, self.frame_count, self.keyframes, self)
+            dialog = ObjectAnnotationDialog(object_size, self.frame_count, key_frames, self)
             if dialog.exec_() == QDialog.Accepted:
                 self.start_frame_to_object_id = dialog.get_result()
             else:
@@ -1704,6 +1737,21 @@ class VideoPlayer(QWidget):
         else:
             self.smart_message('无物体标注')
             return
+    
+    def align_contact_frame_with_object_sep(self):
+        self.frame_contact_to_object_id = dict()
+        if len(self.frame_contact) != len(self.start_frame_to_object_id):
+            self.smart_message('接触帧数量和物体标注数量不一致')
+            return -1
+
+        self.frame_contact_to_object_id = dict()
+        frame_contact_ids = sorted(list(self.frame_contact))
+        sep_frame_ids = sorted(list(self.start_frame_to_object_id.keys()))
+        
+        for c_id, s_id in zip(frame_contact_ids, sep_frame_ids):
+            self.frame_contact_to_object_id[c_id] = self.start_frame_to_object_id[s_id]
+        
+        return 0
     
     def delete_keyframe(self):
         info, lang = self.get_clip_description()
