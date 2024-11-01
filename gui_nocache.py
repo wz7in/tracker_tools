@@ -134,32 +134,32 @@ class ObjectAnnotationDialog(QDialog):
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         # add object size input box
         self.object_size = object_size
-        start_frame_id = [0] + keyframes
-        for idx, start_idx in enumerate(start_frame_id):
+        self.start_frame_id = [0] + keyframes
+        for idx, start_idx in enumerate(self.start_frame_id):
             
-            if idx == len(start_frame_id)-1:
+            if idx == len(self.start_frame_id)-1:
                 end_idx = frame_number - 1
             elif idx == 0:
-                end_idx = start_frame_id[idx+1]
+                end_idx = self.start_frame_id[idx+1]
             
             self.main_layout.addWidget(QLabel(f'视频区间[{start_idx+1}:{end_idx+1}]', self), idx, 0)
             select_button = QComboBox()
             select_button.addItems([f"物体{i+1}" for i in range(self.object_size)])
             select_button.setFixedSize(100, 30)
-            select_button.setCurrentIndex(idx)
+            select_button.setCurrentIndex(idx if idx < self.object_size else -1)
             self.main_layout.addWidget(select_button, idx, 1)
         
-        self.main_layout.addWidget(self.button_box, object_size, 0, 1, 2)
+        self.main_layout.addWidget(self.button_box, len(self.start_frame_id), 0, 1, 2)
         # self.main_layout.itemAt(self.object_size*2-1).widget().setText(str(frame_number))
         
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
     
     def get_obj_id(self):
-        return [int(self.main_layout.itemAt(i+1).widget().currentText().replace('物体','')) for i in range(0, self.object_size*2, 2)]
+        return [int(self.main_layout.itemAt(i+1).widget().currentText().replace('物体','')) for i in range(0, len(self.start_frame_id)*2, 2)]
     
     def get_frame_id(self):
-        return [int(self.main_layout.itemAt(i).widget().text().split('[')[1].split(':')[0]) for i in range(0, self.object_size*2, 2)]
+        return [int(self.main_layout.itemAt(i).widget().text().split('[')[1].split(':')[0]) for i in range(0, len(self.start_frame_id)*2, 2)]
     
     def get_result(self):
         return dict(zip(self.get_frame_id(), self.get_obj_id()))
@@ -1348,8 +1348,8 @@ class VideoPlayer(QWidget):
                 self.smart_message(f"第{i}帧标注物体数量与第0帧不匹配, 请检查")
                 return -1
         
-        object_sep = [i for i in self.keyframes if self.keyframes[i] == 'object_sep']
-        if len(tracking_points[select_frames[0]]) > 0 and len(tracking_points[select_frames[0]]) != len(object_sep) + 1:
+        objects = list(set([i for i in self.start_frame_to_object_id.values()]))
+        if len(tracking_points[select_frames[0]]) > 0 and len(tracking_points[select_frames[0]]) != len(objects):
             self.smart_message("标注物体数量与关键帧数量不匹配, 请检查")
             return -1
         
@@ -1717,18 +1717,18 @@ class VideoPlayer(QWidget):
         key_frames = [k for (k, v) in self.keyframes.items() if v == 'object_sep']
         
         if object_size > 1:
-            if object_size != len(key_frames) + 1:
-                self.smart_message('关键帧分割和物体标注数量不一致！')
-                return
+            # if object_size != len(key_frames) + 1:
+            #     self.smart_message('关键帧分割和物体标注数量不一致！')
+            #     return
             dialog = ObjectAnnotationDialog(object_size, self.frame_count, key_frames, self)
             if dialog.exec_() == QDialog.Accepted:
                 self.start_frame_to_object_id = dialog.get_result()
             else:
                 return
         elif object_size == 1:
-            if len(key_frames) > 0:
-                self.smart_message('关键帧分割和物体标注数量不一致！')
-                return
+            # if len(key_frames) > 0:
+            #     self.smart_message('关键帧分割和物体标注数量不一致！')
+            #     return
             dialog = ObjectAnnotationDialog(object_size, self.frame_count, key_frames, self)
             if dialog.exec_() == QDialog.Accepted:
                 self.start_frame_to_object_id = dialog.get_result()
@@ -1741,6 +1741,7 @@ class VideoPlayer(QWidget):
     def align_contact_frame_with_object_sep(self):
         self.frame_contact_to_object_id = dict()
         if len(self.frame_contact) != len(self.start_frame_to_object_id):
+            print(self.frame_contact, self.start_frame_to_object_id)
             self.smart_message('接触帧数量和物体标注数量不一致')
             return -1
 
