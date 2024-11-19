@@ -163,8 +163,29 @@ def drawback_video(ip, video_path, mode):
         print("Error:", response)
         return False
 
+def get_avaiable_username(ip, username):
+    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
+    url = f"{root_url}/is_available_user"
+    config = {
+        "user_name": username,
+    }
+    response = requests.post(
+        url, data=json.dumps(config), headers={"content-type": "application/json"}
+    )
+    if response.status_code == 200:
+        zip_io = io.BytesIO(response.content)
+        with zipfile.ZipFile(zip_io, "r") as zf:
+            with zf.open("user_name") as f:
+                username = f.read().decode("utf-8")
+        return username
+    else:
+        print("Error:", response)
+        return None
+
 if __name__ == "__main__":
-    a,b = request_video_and_anno('sam')
-    print(a.shape, b)
+    # a,b = request_video_and_anno('sam')
+    # print(a.shape, b)
     # save_anno(c, b)
+    
+    print(get_avaiable_username('10.140.0.131', 'test1'))
     

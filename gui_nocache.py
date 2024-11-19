@@ -9,7 +9,7 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread
 
 import yaml
-from client_utils import request_video_and_anno, save_anno, drawback_video
+from client_utils import request_video_and_anno, save_anno, drawback_video, get_avaiable_username
 import numpy as np
 
 BASE_CLIP_DES = ['拿着[某物体]从[某位置1]移动到[某位置2]', '在[某位置]抓起[某物体]', '把[某物体]放置到[某位置]', '在[某位置]按压[某物体]', '把[某物体]推到[某位置]', '把[某物体]拉到[某位置]', '[顺时针/逆时针]转动[某物体]',  '把[某物体]倒到[某位置]', '在[某位置]折叠[某物体]', '在[某位置]滑动[某物体]', '把[某物体]插入到[某位置]', '在[某位置]摇动[某物体]', '在[某位置]敲击[某物体]', '把[某物体]扔到[某位置]', '在[某位置]操作[某物体]']
@@ -139,8 +139,8 @@ class ObjectAnnotationDialog(QDialog):
             
             if idx == len(self.start_frame_id)-1:
                 end_idx = frame_number - 1
-            elif idx == 0:
-                end_idx = self.start_frame_id[idx+1]
+            else:
+                end_idx = self.start_frame_id[idx+1] - 1
             
             self.main_layout.addWidget(QLabel(f'视频区间[{start_idx+1}:{end_idx+1}]', self), idx, 0)
             select_button = QComboBox()
@@ -703,14 +703,23 @@ class VideoPlayer(QWidget):
         button_box.rejected.connect(dialog.reject)
         dialog_layout.addWidget(button_box)
         if dialog.exec_() == QDialog.Accepted:
-            
             if len(user_name.text()) == 0 or len(ip_address.text()) == 0:
                 self.smart_message("用户名和服务器地址不能为空")
                 sys.exit()
-            
-            return self.mode_select.currentText(), user_name.text(), ip_address.text(), int(self.time_select.currentText())
         else:
             sys.exit()
+            
+        while True:
+            username = user_name.text().strip()
+            ipaddress = ip_address.text().strip()
+            username = get_avaiable_username(ipaddress, username)
+            if username == '':
+                self.smart_message("用户名不存在，请重新输入")
+                dialog.exec_()
+            else:
+                break
+            
+        return self.mode_select.currentText(), username, ipaddress, int(self.time_select.currentText())
     
     def check_anno_mode(self):
         if self.mode_select.currentText() == '分割标注':
@@ -1721,19 +1730,32 @@ class VideoPlayer(QWidget):
             #     self.smart_message('关键帧分割和物体标注数量不一致！')
             #     return
             dialog = ObjectAnnotationDialog(object_size, self.frame_count, key_frames, self)
-            if dialog.exec_() == QDialog.Accepted:
-                self.start_frame_to_object_id = dialog.get_result()
-            else:
-                return
+            while True:
+                if dialog.exec_() == QDialog.Accepted:
+                    try:
+                        self.start_frame_to_object_id = dialog.get_result()
+                        break
+                    except:
+                        self.smart_message('有视频段未标注，请检查')
+                        continue
+                else:
+                    return
         elif object_size == 1:
             # if len(key_frames) > 0:
             #     self.smart_message('关键帧分割和物体标注数量不一致！')
             #     return
             dialog = ObjectAnnotationDialog(object_size, self.frame_count, key_frames, self)
-            if dialog.exec_() == QDialog.Accepted:
-                self.start_frame_to_object_id = dialog.get_result()
-            else:
-                return
+            while True:
+                try:
+                    if dialog.exec_() == QDialog.Accepted:
+                        self.start_frame_to_object_id = dialog.get_result()
+                        break
+                except:
+                    self.smart_message('有视频段未标注，请检查')
+                    continue
+                else:
+                    return
+            
         else:
             self.smart_message('无物体标注')
             return
