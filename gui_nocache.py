@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QM
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QMouseEvent
 from PyQt5.QtCore import Qt, QRect, QPoint, pyqtSignal, QThread
 
-import yaml
+import yaml, time
 from client_utils import request_video_and_anno, save_anno, drawback_video, get_avaiable_username
 import numpy as np
 
@@ -173,12 +173,12 @@ class VideoPlayer(QWidget):
         #################### Main Area Layout ####################
         ###########################################################
         main_layout = QHBoxLayout()     
-        self.mode, self.username, self.ip_address, self.time = self.mode_choose()
+        self.mode, self.username, self.ip_address, self.port, self.time = self.mode_choose()
         if self.mode == '语言标注':
             #resize the window
             self.setFixedSize(1300, 700)
         else:
-            self.setFixedSize(1800, 730)
+            self.setFixedSize(1900, 730)
         ###########################################################
         #################### Video Area Layout ####################
         ###########################################################
@@ -512,6 +512,22 @@ class VideoPlayer(QWidget):
             self.tips_text_layout.addWidget(tips_input, line, i % num_per_line)
         
         self.toolbar_layout.addLayout(self.tips_text_layout)
+        
+        if self.mode != '语言标注':
+            # 添加视频名称展示区域
+            video_name_layout = QHBoxLayout()
+            video_name_title = QLabel("视频名称: ", self)
+            video_name_title.setAlignment(Qt.AlignLeft)
+            video_name_title.setStyleSheet("color: grey; font-weight: bold;")
+            video_name_layout.addWidget(video_name_title)
+            self.video_name_input = QLineEdit(self)
+            self.video_name_input.setReadOnly(True)
+            self.video_name_input.setAlignment(Qt.AlignLeft)
+            self.video_name_input.setStyleSheet("color: grey; font-weight: bold;")
+            self.video_name_input.setFixedSize(610, 30)
+            video_name_layout.addWidget(self.video_name_input)
+            self.toolbar_layout.addLayout(video_name_layout)
+        
         main_layout.addLayout(self.toolbar_layout)
         self.setLayout(main_layout)
 
@@ -578,9 +594,9 @@ class VideoPlayer(QWidget):
             # 用户选择 Yes，允许关闭窗口
             event.accept()
             if self.mode == '语言标注':
-                drawback_video(self.ip_address, self.video_path, 'lang')
+                drawback_video(self.ip_address, self.port, self.video_path, 'lang')
             else:
-                drawback_video(self.ip_address, self.video_path, 'sam')
+                drawback_video(self.ip_address, self.port, self.video_path, 'sam')
         else:
             # 用户选择 No，阻止窗口关闭
             event.ignore()
@@ -598,7 +614,9 @@ class VideoPlayer(QWidget):
             else:
                 self.is_pre_button.setDisabled(False)
                 self.is_finished_button.show()
-                self.is_hard_sample_button.hide()
+                # self.is_hard_sample_button.hide()
+                self.is_hard_sample_button.setText("问题样本")
+                self.is_hard_sample_button.show()
         elif self.re_annotation_button.currentText() == '2':
             if not self.has_two_anno:
                 self.smart_message("暂无需要二次复检的视频，请耐心等待")
@@ -607,7 +625,9 @@ class VideoPlayer(QWidget):
             else:
                 self.is_pre_button.setDisabled(False)
                 self.is_finished_button.show()
-                self.is_hard_sample_button.hide()
+                # self.is_hard_sample_button.hide()
+                self.is_hard_sample_button.setText("问题样本")
+                self.is_hard_sample_button.show()
         elif self.re_annotation_button.currentText() == '3':
             if not self.has_three_anno:
                 self.smart_message("暂无需要三次复检的视频，请耐心等待")
@@ -616,6 +636,7 @@ class VideoPlayer(QWidget):
             else:
                 self.is_pre_button.setDisabled(False)
                 self.is_finished_button.show()
+                self.is_hard_sample_button.setText("困难样本")
                 self.is_hard_sample_button.show()
               
     def get_exe_path(self, relative_path):
@@ -637,7 +658,7 @@ class VideoPlayer(QWidget):
         # 在主窗口上直接弹出对话框，选择模式
         dialog = QDialog(self)
         dialog.setWindowTitle("选择模式")
-        dialog.setFixedSize(400, 300)
+        dialog.setFixedSize(500, 300)
         # center the dialog
         # desktop = QApplication.desktop()
         # dialog.move(int(desktop.width()*0.4), int(desktop.height()*0.4))
@@ -649,49 +670,54 @@ class VideoPlayer(QWidget):
         # 添加用户名字输入框
         username_layout = QHBoxLayout()
         username_label = QLabel("请输入用户名: ", self)
-        username_label.setFixedSize(180, 30)
+        username_label.setFixedSize(150, 30)
         username_layout.addWidget(username_label)
         
         user_name = QLineEdit(self)
         user_name.setPlaceholderText("请输入用户名")
-        user_name.setFixedSize(180, 30)
+        user_name.setFixedSize(275, 30)
         username_layout.addWidget(user_name)
         dialog_layout.addLayout(username_layout)
         
         ip_address_layout = QHBoxLayout()
         ip_address_label = QLabel("请输入服务器地址: ", self)
-        ip_address_label.setFixedSize(180, 30)
+        ip_address_label.setFixedSize(150, 30)
         ip_address_layout.addWidget(ip_address_label)
         
         ip_address = QLineEdit(self)
-        ip_address.setPlaceholderText("请输入服务器地址")
+        ip_address.setPlaceholderText("服务器地址")
         ip_address.setFixedSize(180, 30)
         ip_address_layout.addWidget(ip_address)
+        
+        port = QLineEdit(self)
+        port.setPlaceholderText("端口地址")
+        port.setFixedSize(80, 30)
+        ip_address_layout.addWidget(port)
         dialog_layout.addLayout(ip_address_layout)
         
         mode_layout = QHBoxLayout()
         mode_label = QLabel("请选择标注模式: ", self)
-        mode_label.setFixedSize(180, 30)
+        mode_label.setFixedSize(150, 30)
         mode_layout.addWidget(mode_label)
         
         self.mode_select = QComboBox()
         self.mode_select.addItem('语言标注')
         self.mode_select.addItem('分割标注')
-        self.mode_select.setFixedSize(180, 30)
+        self.mode_select.setFixedSize(275, 30)
         self.mode_select.currentIndexChanged.connect(self.check_anno_mode)
         mode_layout.addWidget(self.mode_select)
         dialog_layout.addLayout(mode_layout)
         
         time_layout = QHBoxLayout()
         self.time_label = QLabel("请选择质检次数: ", self)
-        self.time_label.setFixedSize(180, 30)
+        self.time_label.setFixedSize(150, 30)
         time_layout.addWidget(self.time_label)
         self.time_select = QComboBox()
         self.time_select.addItem('0')
         self.time_select.addItem('1')
         self.time_select.addItem('2')
         self.time_select.addItem('3')
-        self.time_select.setFixedSize(180, 30)
+        self.time_select.setFixedSize(275, 30)
         time_layout.addWidget(self.time_select)
         dialog_layout.addLayout(time_layout)
 
@@ -712,14 +738,15 @@ class VideoPlayer(QWidget):
         while True:
             username = user_name.text().strip()
             ipaddress = ip_address.text().strip()
-            username = get_avaiable_username(ipaddress, username)
+            ip_port = port.text().strip() 
+            username = get_avaiable_username(ipaddress, ip_port, username)
             if username == '':
                 self.smart_message("用户名不存在，请重新输入")
                 dialog.exec_()
             else:
                 break
             
-        return self.mode_select.currentText(), username, ipaddress, int(self.time_select.currentText())
+        return self.mode_select.currentText(), username, ipaddress, ip_port, int(self.time_select.currentText())
     
     def check_anno_mode(self):
         if self.mode_select.currentText() == '分割标注':
@@ -911,17 +938,16 @@ class VideoPlayer(QWidget):
                 self.is_pre_button.setChecked(False)
                 self.button_mode = 'next'
             if self.mode == '语言标注':
-                return request_video_and_anno(self.ip_address, 'lang', self.username, self.button_mode, self.video_path)
+                return request_video_and_anno(self.ip_address, self.port, 'lang', self.username, self.button_mode, self.video_path)
             else:
                 re_anno = int(self.re_annotation_button.currentText())
-                return request_video_and_anno(self.ip_address, 'sam', self.username, self.button_mode, self.video_path, re_anno)
+                return request_video_and_anno(self.ip_address, self.port, 'sam', self.username, self.button_mode, self.video_path, re_anno)
         
         except Exception as e:
-            print(e)
             if self.mode == '语言标注':
-                return None, None, None, None, None
+                return None
             else:
-                return None, None, None, None, 0, 0
+                return None
                
     def request_video_async(self):
         class VideoThread(QThread):
@@ -931,6 +957,15 @@ class VideoPlayer(QWidget):
                 self.parent = parent
             def run(self):
                 res = self.parent.request_video()
+                try_count = 0
+                while res is None:
+                    if try_count > 3:
+                        break
+                    time.sleep(3)
+                    res = self.parent.request_video()
+                    try_count += 1
+                if try_count > 3:
+                    raise Exception("请求视频失败")
                 self.finished.emit(res)
         video_thread = VideoThread(self)
         return video_thread
@@ -966,8 +1001,24 @@ class VideoPlayer(QWidget):
         lang_res['user'] = self.username
         lang_res['video_path'] = self.video_path
         lang_res['button_mode'] = self.button_mode
+        lang_res['frames'] = self.progress_slider.maximum()
 
-        save_anno(self.ip_address, self.save_path, lang_res)
+        res = save_anno(self.ip_address, self.port, self.save_path, lang_res)
+        try_time = 0
+        while not res:
+            if try_time > 3:
+                break
+            self.smart_message("保存失败，进行第{}次重试".format(try_time+1))
+            time.sleep(4)
+            res = save_anno(self.ip_address, self.port, self.save_path, lang_res)
+            try_time += 1
+        
+        if not res:
+            self.progress.close()
+            self.smart_message("保存失败，即将退出系统重启软件")
+            drawback_video(self.ip_address, self.port, self.video_path, 'lang')
+            sys.exit()
+            
         self.progress.close()
         self.lang_anno = dict()
         return 0
@@ -1037,7 +1088,8 @@ class VideoPlayer(QWidget):
                 self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['labels'].pop()
         
         if len(self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['pos']) == 0 and len(self.tracking_points_sam[self.progress_slider.value()][sam_object_id]['neg']) == 0:
-            self.sam_frame_id.remove(self.progress_slider.value())
+            if self.progress_slider.value() in self.sam_frame_id:
+                self.sam_frame_id.remove(self.progress_slider.value())
             cur_obj_id = self.sam_object_id[self.progress_slider.value()]
             if cur_obj_id > 0:
                 self.tracking_points_sam[self.progress_slider.value()].pop(cur_obj_id)
@@ -1070,7 +1122,8 @@ class VideoPlayer(QWidget):
                 dict(pos=[], raw_pos=[], neg=[], raw_neg=[], labels=[])
             )
             self.sam_object_id[self.progress_slider.value()]=0
-            self.sam_frame_id.remove(self.progress_slider.value())
+            if self.progress_slider.value() in self.sam_frame_id:
+                self.sam_frame_id.remove(self.progress_slider.value())
         
         cur_id = self.sam_object_id[self.progress_slider.value()] + 1
         all_object_size = len(self.tracking_points_sam[self.progress_slider.value()])
@@ -1120,6 +1173,7 @@ class VideoPlayer(QWidget):
             self.has_one_anno = one_anno_num > 0
             self.has_two_anno = two_anno_num > 0
             self.has_three_anno = three_anno_num > 0
+            self.video_name_input.setText(video_path.split('/')[-1].split('.')[0])
         
         if video is not None:
             self.load_video(video)
@@ -1325,6 +1379,7 @@ class VideoPlayer(QWidget):
         select_frames = list(self.sam_frame_id)
         self.sam_config['video_path'] = self.video_path
         self.sam_config['user'] = self.username
+        self.sam_config["hard_sample_type"] = 'normal'
         
         if self.is_hard_sample_button.isChecked() and self.is_finished_button.isChecked():
             self.smart_message("困难样本不可标注为完成，请检查")
@@ -1333,11 +1388,13 @@ class VideoPlayer(QWidget):
         if self.is_finished_button.isChecked():
             self.sam_config['is_finished'] = True
             self.sam_config['is_hard_sample'] = False
+            self.sam_config["hard_sample_type"] = self.is_hard_sample_button.text() 
             return 0
         
         if self.is_hard_sample_button.isChecked():
             self.sam_config['is_hard_sample'] = True
             self.sam_config['is_finished'] = False
+            self.sam_config["hard_sample_type"] = self.is_hard_sample_button.text()
             return 0
         
         if len(select_frames) == 0:
@@ -1429,7 +1486,22 @@ class VideoPlayer(QWidget):
         self.progress.setCancelButton(None)
         self.progress.setMinimumDuration(0)
         self.progress.show()
-        save_anno(self.ip_address, self.save_path, self.sam_config.copy())
+        res = save_anno(self.ip_address, self.port, self.save_path, self.sam_config.copy())
+        try_time = 0
+        while not res:
+            if try_time > 3:
+                break
+            self.smart_message("保存失败，进行第{}次重试".format(try_time+1))
+            time.sleep(4)
+            res = save_anno(self.ip_address, self.port, self.save_path, self.sam_config.copy())
+            try_time += 1
+        
+        if not res:
+            self.progress.close()
+            self.smart_message("保存失败，即将退出系统重启软件")
+            drawback_video(self.ip_address, self.port, self.video_path, 'sam')
+            sys.exit()
+        
         self.progress.close()
         return 0
               

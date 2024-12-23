@@ -7,8 +7,8 @@ from cotracker.utils.visualizer import Visualizer
 
 base_url = 'http://{ip}:{port}'
 
-def request_sam(ip, config, mode):
-    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
+def request_sam(ip, port, config, mode):
+    root_url = base_url.format(ip=ip, port=port)
     if mode == "online":
         url = f"{root_url}/predict_sam"
     else:
@@ -34,8 +34,8 @@ def request_sam(ip, config, mode):
         print("Error:", response)
         return None, None
 
-def request_video(ip, video_path):
-    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
+def request_video(ip, port, video_path):
+    root_url = base_url.format(ip=ip, port=port)
     url = f"{root_url}/get_video"
     config = {
         "video_path": video_path,
@@ -57,8 +57,8 @@ def request_video(ip, video_path):
         print("Error:", response)
         return None
 
-def request_video_and_anno(ip, mode, username, button_mode, last_video_path, re_anno=0):
-    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
+def request_video_and_anno(ip, port, mode, username, button_mode, last_video_path, re_anno=0):
+    root_url = base_url.format(ip=ip, port=port)
     if mode == 'lang':
         url = f"{root_url}/get_video_and_anno_lang"
     else:
@@ -123,12 +123,12 @@ def request_video_and_anno(ip, mode, username, button_mode, last_video_path, re_
     else:
         print("Error:", response)
         if mode == 'lang':
-            return None, None, None, None, 0
+            return None
         else:
-            return None, None, None, 0, 0, 0
+            return None
 
-def save_anno(ip, save_path, anno):
-    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
+def save_anno(ip, port, save_path, anno):
+    root_url = base_url.format(ip=ip, port=port)
     url = f"{root_url}/save_anno"
     # save as binary file
     anno_bytes = io.BytesIO()
@@ -145,8 +145,8 @@ def save_anno(ip, save_path, anno):
         print("Error:", response)
         return False
 
-def drawback_video(ip, video_path, mode):
-    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
+def drawback_video(ip, port, video_path, mode):
+    root_url = base_url.format(ip=ip, port=port)
     if mode == 'lang':
         url = f"{root_url}/drawback_video_lang"
     else:
@@ -163,8 +163,8 @@ def drawback_video(ip, video_path, mode):
         print("Error:", response)
         return False
 
-def get_avaiable_username(ip, username):
-    root_url = base_url.format(ip=ip, port=random.randint(10050, 10059))
+def get_avaiable_username(ip, port, username):
+    root_url = base_url.format(ip=ip, port=port)
     url = f"{root_url}/is_available_user"
     config = {
         "user_name": username,
@@ -177,7 +177,7 @@ def get_avaiable_username(ip, username):
         with zipfile.ZipFile(zip_io, "r") as zf:
             with zf.open("user_name") as f:
                 username = f.read().decode("utf-8")
-        return username
+        return username.strip()
     else:
         print("Error:", response)
         return None
